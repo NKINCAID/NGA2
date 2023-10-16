@@ -1,0 +1,4 @@
+f90EXE_sources += pdf_class.f90
+
+INCLUDE_LOCATIONS += $(NGA_HOME)/src/pdf
+VPATH_LOCATIONS   += $(NGA_HOME)/src/pdf

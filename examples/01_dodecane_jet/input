@@ -1,0 +1,85 @@
+# Parallelization
+Partition :	4 1 1
+
+# Mesh definition
+Lx :  210e-3
+Ly :  105e-3
+Lz :  1e-3
+
+nx :	128
+ny :	64
+nz :	1
+
+Jet diameter : 21.0e-3
+Pilot diameter : 50.0e-3
+
+# Fluid properties
+Gravity :		0 0 0
+Dynamic viscosity :	0.001
+Dynamic diffusivity :	1.0e-4
+
+Number of filters : 1
+Sub-iterations : 5
+
+SV relaxation tau : 4
+
+# Injection velocity
+Jet velocity : 24.0
+Pilot velocity : 11.6
+Coflow velocity : 4.5
+
+# PDF parameters
+Number of particles per cell : 20
+Use reactions : .false.
+Use explicit try: .false.
+
+Pressure : 101325.0
+
+Initial temperature : 300
+Initial gas N2 : 0.778
+Initial gas O2 : 0.212
+Initial gas H2O : 0.01
+
+
+Jet temperature: 500
+Jet gas N2 : 0.5942552
+Jet gas O2 : 0.1478862
+Jet gas CO2 : 0.0847847
+Jet gas H2O : 0.0200739
+Jet gas NXC12H26 : 0.1530
+
+Pilot temperature :      2230.155
+Pilot gas N2                 : 6.203757E-01
+Pilot gas O                  : 1.526311E-05
+Pilot gas H2                 : 4.349022E-05
+Pilot gas H                  : 9.881826E-07
+Pilot gas OH                 : 5.685622E-04
+Pilot gas H2O                : 8.254571E-02
+Pilot gas H2O2               : 1.688385E-07
+Pilot gas O2                 : 2.728825E-03
+Pilot gas HO2                : 7.434885E-07
+Pilot gas CH2O               : 4.377929E-11
+Pilot gas CO2                : 2.890652E-01
+Pilot gas CO                 : 4.655380E-03
+Pilot gas HCO                : 1.060709E-09
+
+Coflow temperature : 300
+Coflow gas N2 : 0.778
+Coflow gas O2 : 0.212
+Coflow gas H2O : 0.01
+
+# Time integration
+Max timestep size :	1e-5
+Max cfl number :	0.5
+Max time : 0.02
+
+# Pressure solver
+Pressure tolerance : 	1e-8
+Pressure iteration : 	500
+
+# Implicit velocity solver
+Implicit tolerance : 	1e-8
+Implicit iteration : 	500
+
+# Ensight output
+Ensight output period : 1e-4
