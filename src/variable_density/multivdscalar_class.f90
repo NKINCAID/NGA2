@@ -508,7 +508,6 @@ contains
       integer :: i,j,k,n, nsc
       type(bcond), pointer :: my_bc
       
-      do nsc=1,this%nscalar
          ! Traverse bcond list
          my_bc=>this%first_bc
          do while (associated(my_bc))            
@@ -524,10 +523,12 @@ contains
                   
                case (neumann)             ! Apply Neumann condition
                   ! Implement based on bcond direction
-                  do n=1,my_bc%itr%n_
-                     i=my_bc%itr%map(1,n); j=my_bc%itr%map(2,n); k=my_bc%itr%map(3,n)
-                     this%SC(i,j,k, nsc)=this%SC(i-shift(1,my_bc%dir),j-shift(2,my_bc%dir),k-shift(3,my_bc%dir), nsc)
-                     this%rhoSC(i,j,k, nsc)=this%rhoSC(i-shift(1,my_bc%dir),j-shift(2,my_bc%dir),k-shift(3,my_bc%dir), nsc)
+                  do nsc=1,this%nscalar
+                     do n=1,my_bc%itr%n_
+                        i=my_bc%itr%map(1,n); j=my_bc%itr%map(2,n); k=my_bc%itr%map(3,n)
+                        this%SC(i,j,k, nsc)=this%SC(i-shift(1,my_bc%dir),j-shift(2,my_bc%dir),k-shift(3,my_bc%dir), nsc)
+                        this%rhoSC(i,j,k, nsc)=this%rhoSC(i-shift(1,my_bc%dir),j-shift(2,my_bc%dir),k-shift(3,my_bc%dir), nsc)
+                     end do
                   end do
                   
                case default
@@ -535,18 +536,18 @@ contains
                end select
                
             end if
-         
-            ! Sync full fields after each bcond - this should be optimized
-            call this%cfg%sync(this%SC(:,:,:,nsc))
-            call this%cfg%sync(this%rhoSC(:,:,:,nsc))
             
             ! Move on to the next bcond
             my_bc=>my_bc%next
 
-            
          end do
-      end do
       
+      ! Sync full fields after all bcond
+      do nsc=1,this%nscalar
+         call this%cfg%sync(this%SC(:,:,:,nsc))
+         call this%cfg%sync(this%rhoSC(:,:,:,nsc))
+      end do
+
    end subroutine apply_bcond
    
    
