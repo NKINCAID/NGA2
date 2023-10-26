@@ -163,13 +163,14 @@ contains
    ! ===================================================== !
    ! Initialize a double delta field                       !
    ! ===================================================== !
-   subroutine ignition_doubledelta()
+   subroutine ignition_doubledelta(tmp_sc)
       use precision
       use param, only: param_read
       use random,    only: random_normal, random_uniform
       use, intrinsic :: iso_c_binding
       use messager,  only: die
       implicit none
+      real(WP), dimension(sc%cfg%imino_:,sc%cfg%jmino_:,sc%cfg%kmino_:), intent(out) :: tmp_sc
       real(WP) :: pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi, kk2
       ! Complex buffer
       complex(WP), dimension(:,:,:), pointer :: Cbuf
@@ -220,8 +221,6 @@ contains
                if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
                kk =sqrt(kx**2+ky**2+kz**2)
                kk2=sqrt(kx**2+ky**2)
-               !  print *, kx, ky, kz, dk, kk, kk2
-               print *, "kk:",  ks-dk/2.0_WP, kk, ks + dk/2.0_WP
                
                ! Compute the Fourier coefficients
                if ((ks-dk/2.0_WP.le.kk).and.(kk.le.ks+dk/2.0_WP)) then
@@ -229,10 +228,8 @@ contains
                else
                   f_phi = 0.0_WP
                end if
-               print*,"f_phi:", f_phi
                call random_number(rand)
-               ! print *, kk
-               ! print *, f_phi, pi, kk, ii, rand
+
 
                if (kk.lt.1e-10) then
                   Cbuf(i,j,k) = 0.0_WP
@@ -247,8 +244,8 @@ contains
       do j=nk+1,ny
          Cbuf(1,j,1)=conjg(Cbuf(1,ny+2-j,1))
       end do
-      call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf)
-      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf)  
+      call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf, FFTW_ESTIMATE)
+      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf, FFTW_ESTIMATE)  
    
       ! Inverse Fourier transform
       call dfftw_execute(plan_c2r)
@@ -288,7 +285,6 @@ contains
                   Cbuf(i,j,k) = Cbuf(i,j,k) * (kc/kk)**2
                end if
 
-               print*, Cbuf(i,j,k)
                
             end do
          end do
@@ -303,7 +299,6 @@ contains
       call dfftw_execute(plan_c2r)
 
       tmp_sc = Rbuf/real(nx*ny*nz,WP)
-      print *, maxval(tmp_sc), minval(tmp_sc)
 
       ! Destroy the plans
       call dfftw_destroy_plan(plan_c2r)
@@ -415,23 +410,16 @@ contains
          type(bcond), pointer :: mybc
          ! Zero initial field
          sc%SC=0.0_WP
+         tmp_SC = 0.0_WP
          ! Apply BCs
-         call ignition_doubledelta()
-
-         
-         sc%SC = tmp_sc
-
-
-         ! do k=fs%cfg%kmino_,fs%cfg%kmaxo_
-         !    do j=fs%cfg%jmino_,fs%cfg%jmaxo_
-         !       do i=fs%cfg%imino_,fs%cfg%imaxo_
-         !          if (sqrt( (fs%cfg%xm(i) - shift)**2 + fs%cfg%ym(j)**2 + fs%cfg%zm(k)**2) < radius) then
-         !             sc%SC(i,j,k) = Z_spot
-         !          else
-         !             sc%SC(i,j,k) = Z_air
-         !          end if
-         !       end do
-         !    end do
+         call ignition_doubledelta(tmp_SC(:,:,:))
+         ! do k=sc%cfg%kmino_,sc%cfg%kmaxo_
+            do j=sc%cfg%jmino_,sc%cfg%jmax_
+               do i=sc%cfg%imino_+1,sc%cfg%imax_
+                  print *, i,j,tmp_sc(i,j,-1)
+                  sc%SC(i+1,j+1,:) = tmp_sc(i,j,-1)
+               end do
+            end do
          ! end do
 
          ! Compute density

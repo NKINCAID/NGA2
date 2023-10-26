@@ -23,7 +23,7 @@ Spot shift = 2.5
 Z spot : 0.2
 Z air : 1
 
-ks/ko : 20
+ks/ko : 1
 kc/ks : 2
 
 Forcing constant :  1.0
