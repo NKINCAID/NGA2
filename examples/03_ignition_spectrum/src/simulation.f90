@@ -56,7 +56,6 @@ module simulation
 contains
    
 
-
    !> Function that localizes y- boundary
    function ym_locator(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
@@ -78,7 +77,8 @@ contains
       if (j.eq.pg%jmax+1) isIn=.true.
    end function yp_locator
 
-      !> Function that localizes the x+ boundary
+
+   !> Function that localizes the x+ boundary
    function xm_locator(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
       class(pgrid), intent(in) :: pg
@@ -87,6 +87,7 @@ contains
       isIn=.false.
       if (i.eq.pg%imin) isIn=.true.
    end function xm_locator
+
 
    !> Function that localizes the x+ boundary
    function xp_locator(pg,i,j,k) result(isIn)
@@ -106,9 +107,9 @@ contains
       integer, intent(in) :: i,j,k
       logical :: isIn
       isIn=.false.
-
       if (i .eq. pg%imin-1) isIn = .true.
    end function xm_scalar
+
 
   !> Function that localizes the right domain boundary
    function xp_scalar(pg, i, j, k) result(isIn)
@@ -119,10 +120,10 @@ contains
       isIn = .false.
       ! if (i .ge. pg%imax) isIn = .true.
       if (i .eq. pg%imax) isIn = .true.
-  
     end function xp_scalar
    
-       !> Function that localizes y- boundary
+
+   !> Function that localizes y- boundary
    function ym_scalar(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
       class(pgrid), intent(in) :: pg
@@ -142,6 +143,8 @@ contains
       isIn=.false.
       if (j.eq.pg%jmax) isIn=.true.
    end function yp_scalar
+
+
    !> Define here our equation of state
    subroutine get_rho()
       implicit none
@@ -159,7 +162,6 @@ contains
    end subroutine get_rho
 
 
-
    ! ===================================================== !
    ! Initialize a double delta field                       !
    ! ===================================================== !
@@ -170,23 +172,21 @@ contains
       use messager, only: die
       use, intrinsic :: iso_c_binding
       implicit none
-      real(WP) :: pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi, kk2
+      real(WP) :: pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi,kk2
       ! Complex buffer
       complex(WP), dimension(:,:,:), pointer :: Cbuf
       ! Real buffer
       real(WP),    dimension(:,:,:), pointer :: Rbuf
       ! Scalar buffer
-      real(WP)  :: tmp_mean, tmp_rms
+      real(WP)  :: tmp_mean,tmp_rms
       ! Spectrum computation
       real(WP) :: alpha,spec_amp,eps,amp_disc,e_total,energy_spec
       real(WP), dimension(:,:), pointer :: spect
       complex(WP), dimension(:,:,:), pointer :: ak,bk
-
       ! Other
-      integer     :: i,j,k,ik,iunit,dim,nk_,wkmax_
+      integer     :: i,j,k,ik,iunit,dim,nk,wkmax
       complex(WP) :: ii=(0.0_WP,1.0_WP)
-      real(WP)    :: rand
-   
+      real(WP)    :: rand   
       ! Fourier coefficients
       integer(KIND=8) :: plan_r2c,plan_c2r
       complex(WP), dimension(:,:,:), pointer :: Uk,Vk,Wk
@@ -194,9 +194,9 @@ contains
       include 'fftw3.f03'
 
       pi=acos(-1.0_WP) ! Create pi
-      dk=2.0_WP*pi/(Lx/real(sc%cfg%nproc,WP))
-      nk_=(sc%cfg%imax_-sc%cfg%imin_+1)/2+1
-      wkmax_=sc%cfg%imin_+nk_-1
+      dk=2.0_WP*pi/Lx
+      nk=(sc%cfg%imax-sc%cfg%imin+1)/2+1
+      wkmax=sc%cfg%imin+nk-1
    
       ! Initialize in similar manner to Eswaran and Pope 1988
       call param_read('ks/ko',ksk0ratio)
@@ -205,19 +205,19 @@ contains
       kc = kcksratio*ks
    
       ! Allocate Cbuf and Rbuf
-      allocate(Cbuf(sc%cfg%imin_:wkmax_      ,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_))
-      allocate(Rbuf(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_))  
+      allocate(Cbuf(sc%cfg%imin:wkmax      ,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
+      allocate(Rbuf(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))  
       
       ! Compute the Fourier coefficients
-      do k=sc%cfg%kmin_,sc%cfg%kmax_
-         do j=sc%cfg%jmin_,sc%cfg%jmax_
-            do i=sc%cfg%imin_,wkmax_
+      do k=sc%cfg%kmin,sc%cfg%kmax
+         do j=sc%cfg%jmin,sc%cfg%jmax
+            do i=sc%cfg%imin,wkmax
                ! Wavenumbers
                kx=real(i-1,WP)*dk
                ky=real(j-1,WP)*dk
-               if (j.gt.wkmax_) ky=-real(sc%cfg%imax_+1-j,WP)*dk
+               if (j.gt.wkmax) ky=-real(sc%cfg%imax+1-j,WP)*dk
                kz=real(k-1,WP)*dk
-               if (k.gt.wkmax_) kz=-real(sc%cfg%imax_+1-k,WP)*dk
+               if (k.gt.wkmax) kz=-real(sc%cfg%imax+1-k,WP)*dk
                kk =sqrt(kx**2+ky**2+kz**2)
                kk2=sqrt(kx**2+ky**2)
                
@@ -228,7 +228,6 @@ contains
                   f_phi = 0.0_WP
                end if
                call random_number(rand)
-
                if (kk.lt.1e-10) then
                   Cbuf(i,j,k) = 0.0_WP
                else
@@ -239,8 +238,8 @@ contains
       end do
 
       ! Oddball and setting up plans based on geometry
-      do j=sc%cfg%imin_+nk_,sc%cfg%jmax_
-         Cbuf(1,j,1)=conjg(Cbuf(1,sc%cfg%jmax_+2-j,1))
+      do j=sc%cfg%imin+nk,sc%cfg%jmax
+         Cbuf(1,j,1)=conjg(Cbuf(1,sc%cfg%jmax+2-j,1))
       end do
       call dfftw_plan_dft_c2r_2d(plan_c2r,sc%cfg%nx_,sc%cfg%ny_,Cbuf,Rbuf,FFTW_ESTIMATE)
       call dfftw_plan_dft_r2c_2d(plan_r2c,sc%cfg%nx_,sc%cfg%ny_,Rbuf,Cbuf,FFTW_ESTIMATE)  
@@ -249,9 +248,9 @@ contains
       call dfftw_execute(plan_c2r)
    
       ! Force 'double-delta' pdf on scalar field
-      do k=sc%cfg%kmin_,sc%cfg%kmax_
-         do j=sc%cfg%jmin_,sc%cfg%jmax_
-            do i=sc%cfg%imin_,sc%cfg%imax_
+      do k=sc%cfg%kmin,sc%cfg%kmax
+         do j=sc%cfg%jmin,sc%cfg%jmax
+            do i=sc%cfg%imin,sc%cfg%imax
                if (Rbuf(i,j,k).le.0.0_WP) then
                   Rbuf(i,j,k) = 0.0_WP
                else
@@ -264,15 +263,15 @@ contains
       ! Fourier Transform and filter to smooth
       call dfftw_execute(plan_r2c)
    
-      do k=sc%cfg%kmin_,sc%cfg%kmax_
-         do j=sc%cfg%jmin_,sc%cfg%jmax_
-            do i=sc%cfg%imin_,wkmax_
+      do k=sc%cfg%kmin,sc%cfg%kmax
+         do j=sc%cfg%jmin,sc%cfg%jmax
+            do i=sc%cfg%imin,wkmax
                ! Wavenumbers
                kx=real(i-1,WP)*dk
                ky=real(j-1,WP)*dk
-               if (j.gt.wkmax_) ky=-real(sc%cfg%imax_+1-j,WP)*dk
+               if (j.gt.wkmax) ky=-real(sc%cfg%imax+1-j,WP)*dk
                kz=real(k-1,WP)*dk
-               if (k.gt.wkmax_) kz=-real(sc%cfg%imax_+1-k,WP)*dk
+               if (k.gt.wkmax) kz=-real(sc%cfg%imax+1-k,WP)*dk
                kk =sqrt(kx**2+ky**2+kz**2)
                kk2=sqrt(kx**2+ky**2)
                
@@ -287,16 +286,17 @@ contains
       end do
 
       ! Oddball
-      do j=sc%cfg%imin_+nk_,sc%cfg%jmax_
-         Cbuf(1,j,1)=conjg(Cbuf(1,sc%cfg%jmax_+2-j,1))
+      do j=sc%cfg%imin+nk,sc%cfg%jmax
+         Cbuf(1,j,1)=conjg(Cbuf(1,sc%cfg%jmax+2-j,1))
       end do
 
       ! Fourier Transform back to real
       call dfftw_execute(plan_c2r)
 
-      sc%SC=0.0_WP ! To set zero for ghost cells
-      sc%SC(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)=Rbuf/real(sc%cfg%nx_*sc%cfg%ny_*sc%cfg%nz_,WP)
-      call sc%cfg%sync(sc%SC)
+      ! To set zero for ghost cells
+      sc%SC=0.0_WP
+      ! Set the internal scalar field
+      sc%SC(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax)=Rbuf/real(sc%cfg%nx_*sc%cfg%ny_*sc%cfg%nz_,WP)
 
       ! Destroy the plans
       call dfftw_destroy_plan(plan_c2r)
@@ -306,6 +306,7 @@ contains
       deallocate(Cbuf)
       deallocate(Rbuf)
    end subroutine ignition_doubledelta   
+
 
    !> Initialization of problem solver
    subroutine simulation_init
@@ -382,7 +383,6 @@ contains
          allocate(Wi  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
          allocate(SR  (1:6,cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_))
          allocate(gradU(1:3,1:3,cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_))
-
          ! Scalar solver
          allocate(resSC(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
       end block allocate_work_arrays
@@ -403,7 +403,8 @@ contains
       initialize_scalar: block
          use vdscalar_class, only: bcond
          integer :: n,i,j,k
-         type(bcond), pointer :: mybc         
+         type(bcond), pointer :: mybc
+         ! Initialize the scalar field
          call ignition_doubledelta()
          ! Compute density
          call get_rho()
@@ -649,9 +650,6 @@ contains
       deallocate(resSC,resU,resV,resW,Ui,Vi,Wi)
       
    end subroutine simulation_final
-   
-   
-   
    
    
 end module simulation
