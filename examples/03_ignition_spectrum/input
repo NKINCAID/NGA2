@@ -25,6 +25,7 @@ Z air       : 1
 
 ks/ko : 10
 kc/ks : 2
+Buffer region length : 0.1
 
 Forcing constant : 1.0
 

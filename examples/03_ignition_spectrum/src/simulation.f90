@@ -45,6 +45,7 @@ module simulation
    real(WP) :: Urms0,TKE0,EPS0,Re_max
    real(WP) :: TKE,URMS
    real(WP) :: tauinf,G,Gdtau,Gdtaui,dx
+   real(WP) :: L_buffer
    
    !> For monitoring
    real(WP) :: EPS
@@ -165,13 +166,15 @@ contains
    ! ===================================================== !
    ! Initialize a double delta field                       !
    ! ===================================================== !
-   subroutine ignition_doubledelta()
+   subroutine ignition_doubledelta(Lbu)
       use precision
       use param,    only: param_read
       use random,   only: random_normal, random_uniform
       use messager, only: die
       use, intrinsic :: iso_c_binding
       implicit none
+      ! Buffer region lenght
+      real(WP), intent(in) :: Lbu
       real(WP) :: pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi,kk2
       ! Complex buffer
       complex(WP), dimension(:,:,:), pointer :: Cbuf
@@ -184,40 +187,95 @@ contains
       real(WP), dimension(:,:), pointer :: spect
       complex(WP), dimension(:,:,:), pointer :: ak,bk
       ! Other
-      integer     :: i,j,k,ik,iunit,dim,nk,wkmax
+      integer     :: i,j,k,ik,iunit,dim,nk,imin,imax,jmin,jmax,kmin,kmax,nx,ny,nz
       complex(WP) :: ii=(0.0_WP,1.0_WP)
       real(WP)    :: rand   
       ! Fourier coefficients
       integer(KIND=8) :: plan_r2c,plan_c2r
       complex(WP), dimension(:,:,:), pointer :: Uk,Vk,Wk
-      
+
       include 'fftw3.f03'
 
-      pi=acos(-1.0_WP) ! Create pi
-      dk=2.0_WP*pi/Lx
-      nk=(sc%cfg%imax-sc%cfg%imin+1)/2+1
-      wkmax=sc%cfg%imin+nk-1
+      ! Create pi
+      pi=acos(-1.0_WP)
+
+      ! Step size for wave number
+      dk=2.0_WP*pi/(Lx-2.0_WP*Lbu)
+
+      ! Find the x bounds of the region to be initialized
+      imin=sc%cfg%imin
+      do i=sc%cfg%imin,sc%cfg%imax
+         if (sc%cfg%xm(i).gt.sc%cfg%x(sc%cfg%imin)+Lbu) then
+            imin=i
+            exit
+         end if
+      end do
+      imax=sc%cfg%imax
+      do i=sc%cfg%imax,sc%cfg%imin,-1
+         if (sc%cfg%xm(i).lt.sc%cfg%x(sc%cfg%imax+1)-Lbu) then
+            imax=i
+            exit
+         end if
+      end do
+
+      ! Find the y bounds of the region to be initialized
+      jmin=sc%cfg%jmin
+      do j=sc%cfg%jmin,sc%cfg%jmax
+         if (sc%cfg%ym(j).gt.sc%cfg%y(sc%cfg%jmin)+Lbu) then
+         jmin=j
+         exit
+         end if
+      end do
+      jmax=sc%cfg%jmax
+      do j=sc%cfg%jmax,sc%cfg%jmin,-1
+         if (sc%cfg%ym(j).lt.sc%cfg%y(sc%cfg%jmax+1)-Lbu) then
+            jmax=j
+            exit
+         end if
+      end do
+
+      ! Find the z bounds of the region to be initialized
+      kmin=sc%cfg%kmin
+      do k=sc%cfg%kmin,sc%cfg%kmax
+         if (sc%cfg%zm(k).gt.sc%cfg%z(sc%cfg%kmin)+Lbu) then
+         kmin=k
+         exit
+         end if
+      end do
+      kmax=sc%cfg%kmax
+      do k=sc%cfg%kmax,sc%cfg%kmin,-1
+         if (sc%cfg%zm(k).lt.sc%cfg%z(sc%cfg%kmax+1)-Lbu) then
+            kmax=k
+            exit
+         end if
+      end do
+
+      ! Number of cells iniside the initialization region
+      nx=imax-imin+1
+      ny=jmax-jmin+1
+      nz=kmax-kmin+1
+      nk=nx/2+1
    
       ! Initialize in similar manner to Eswaran and Pope 1988
       call param_read('ks/ko',ksk0ratio)
-      ks = ksk0ratio*dk
+      ks=ksk0ratio*dk
       call param_read('kc/ks',kcksratio)
-      kc = kcksratio*ks
+      kc=kcksratio*ks
    
       ! Allocate Cbuf and Rbuf
-      allocate(Cbuf(sc%cfg%imin:wkmax      ,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
-      allocate(Rbuf(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))  
+      allocate(Cbuf(nk,ny,nz))
+      allocate(Rbuf(nx,ny,nz))
       
       ! Compute the Fourier coefficients
-      do k=sc%cfg%kmin,sc%cfg%kmax
-         do j=sc%cfg%jmin,sc%cfg%jmax
-            do i=sc%cfg%imin,wkmax
+      do k=1,nz
+         do j=1,ny
+            do i=1,nk
                ! Wavenumbers
                kx=real(i-1,WP)*dk
                ky=real(j-1,WP)*dk
-               if (j.gt.wkmax) ky=-real(sc%cfg%imax+1-j,WP)*dk
+               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
                kz=real(k-1,WP)*dk
-               if (k.gt.wkmax) kz=-real(sc%cfg%imax+1-k,WP)*dk
+               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
                kk =sqrt(kx**2+ky**2+kz**2)
                kk2=sqrt(kx**2+ky**2)
                
@@ -238,19 +296,19 @@ contains
       end do
 
       ! Oddball and setting up plans based on geometry
-      do j=sc%cfg%imin+nk,sc%cfg%jmax
-         Cbuf(1,j,1)=conjg(Cbuf(1,sc%cfg%jmax+2-j,1))
+      do j=nk+1,ny
+         Cbuf(1,j,1)=conjg(Cbuf(1,ny+2-j,1))
       end do
-      call dfftw_plan_dft_c2r_2d(plan_c2r,sc%cfg%nx_,sc%cfg%ny_,Cbuf,Rbuf,FFTW_ESTIMATE)
-      call dfftw_plan_dft_r2c_2d(plan_r2c,sc%cfg%nx_,sc%cfg%ny_,Rbuf,Cbuf,FFTW_ESTIMATE)  
+      call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf,FFTW_ESTIMATE)
+      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf,FFTW_ESTIMATE)  
    
       ! Inverse Fourier transform
       call dfftw_execute(plan_c2r)
    
       ! Force 'double-delta' pdf on scalar field
-      do k=sc%cfg%kmin,sc%cfg%kmax
-         do j=sc%cfg%jmin,sc%cfg%jmax
-            do i=sc%cfg%imin,sc%cfg%imax
+      do k=1,nz
+         do j=1,ny
+            do i=1,nx
                if (Rbuf(i,j,k).le.0.0_WP) then
                   Rbuf(i,j,k) = 0.0_WP
                else
@@ -263,15 +321,15 @@ contains
       ! Fourier Transform and filter to smooth
       call dfftw_execute(plan_r2c)
    
-      do k=sc%cfg%kmin,sc%cfg%kmax
-         do j=sc%cfg%jmin,sc%cfg%jmax
-            do i=sc%cfg%imin,wkmax
+      do k=1,nz
+         do j=1,ny
+            do i=1,nk
                ! Wavenumbers
                kx=real(i-1,WP)*dk
                ky=real(j-1,WP)*dk
-               if (j.gt.wkmax) ky=-real(sc%cfg%imax+1-j,WP)*dk
+               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
                kz=real(k-1,WP)*dk
-               if (k.gt.wkmax) kz=-real(sc%cfg%imax+1-k,WP)*dk
+               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
                kk =sqrt(kx**2+ky**2+kz**2)
                kk2=sqrt(kx**2+ky**2)
                
@@ -286,17 +344,17 @@ contains
       end do
 
       ! Oddball
-      do j=sc%cfg%imin+nk,sc%cfg%jmax
-         Cbuf(1,j,1)=conjg(Cbuf(1,sc%cfg%jmax+2-j,1))
+      do j=nk+1,ny
+         Cbuf(1,j,1)=conjg(Cbuf(1,ny+2-j,1))
       end do
 
       ! Fourier Transform back to real
       call dfftw_execute(plan_c2r)
 
-      ! To set zero for ghost cells
+      ! To set zero for ghost cells and buffer region
       sc%SC=0.0_WP
       ! Set the internal scalar field
-      sc%SC(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax)=Rbuf/real(sc%cfg%nx_*sc%cfg%ny_*sc%cfg%nz_,WP)
+      sc%SC(imin:imax,jmin:jmax,kmin:kmax)=Rbuf/real(nx*ny*nz,WP)
 
       ! Destroy the plans
       call dfftw_destroy_plan(plan_c2r)
@@ -322,6 +380,8 @@ contains
       call param_read('Spot shift',shift)
       call param_read('Z spot',Z_spot)
       call param_read('Z air',Z_air)
+
+      call param_read('Buffer region length',L_buffer)
 
       
       ! Create a low-Mach flow solver with bconds
@@ -405,7 +465,7 @@ contains
          integer :: n,i,j,k
          type(bcond), pointer :: mybc
          ! Initialize the scalar field
-         call ignition_doubledelta()
+         call ignition_doubledelta(L_buffer)
          ! Compute density
          call get_rho()
       end block initialize_scalar
