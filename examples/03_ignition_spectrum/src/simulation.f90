@@ -1,7 +1,7 @@
 !> Various definitions and tools for running an NGA2 simulation
 module simulation
    use precision,         only: WP
-   use geometry,          only: cfg, nx,ny,nz,Lx,Ly,Lz
+   use geometry,          only: cfg,Lx,Ly,Lz
    use ddadi_class,       only: ddadi
    use hypre_str_class,   only: hypre_str
    use lowmach_class,     only: lowmach
@@ -30,7 +30,7 @@ module simulation
    public :: simulation_init,simulation_run,simulation_final
    
    !> Private work arrays
-   real(WP), dimension(:,:,:), allocatable :: resU,resV,resW,resSC, tmp_sc
+   real(WP), dimension(:,:,:), allocatable :: resU,resV,resW,resSC
    real(WP), dimension(:,:,:), allocatable :: Ui,Vi,Wi
    real(WP), dimension(:,:,:,:), allocatable :: SR
    real(WP), dimension(:,:,:,:,:), allocatable :: gradU
@@ -163,14 +163,13 @@ contains
    ! ===================================================== !
    ! Initialize a double delta field                       !
    ! ===================================================== !
-   subroutine ignition_doubledelta(tmp_sc)
+   subroutine ignition_doubledelta()
       use precision
-      use param, only: param_read
-      use random,    only: random_normal, random_uniform
+      use param,    only: param_read
+      use random,   only: random_normal, random_uniform
+      use messager, only: die
       use, intrinsic :: iso_c_binding
-      use messager,  only: die
       implicit none
-      real(WP), dimension(sc%cfg%imino_:,sc%cfg%jmino_:,sc%cfg%kmino_:), intent(out) :: tmp_sc
       real(WP) :: pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi, kk2
       ! Complex buffer
       complex(WP), dimension(:,:,:), pointer :: Cbuf
@@ -178,13 +177,13 @@ contains
       real(WP),    dimension(:,:,:), pointer :: Rbuf
       ! Scalar buffer
       real(WP)  :: tmp_mean, tmp_rms
-   ! Spectrum computation
+      ! Spectrum computation
       real(WP) :: alpha,spec_amp,eps,amp_disc,e_total,energy_spec
       real(WP), dimension(:,:), pointer :: spect
       complex(WP), dimension(:,:,:), pointer :: ak,bk
 
       ! Other
-      integer :: i,j,k,ik,iunit,dim, nk
+      integer :: i,j,k,ik,iunit,dim,nx,ny,nz,nk
       complex(WP) :: ii=(0.0_WP,1.0_WP)
       real(WP) :: rand
    
@@ -194,7 +193,10 @@ contains
       
       include 'fftw3.f03'
 
-      
+      nx=sc%cfg%nx_
+      ny=sc%cfg%ny_
+      nz=sc%cfg%nz_
+
       pi = acos(-1.0_WP) ! Create pi
       dk = 2.0_WP*pi/Lx
       nk = nx/2+1
@@ -205,7 +207,7 @@ contains
       call param_read('kc/ks',kcksratio)
       kc = kcksratio*ks
    
-   ! Allocate Cbuf and Rbuf
+      ! Allocate Cbuf and Rbuf
       allocate(Cbuf(nk,ny,nz))
       allocate(Rbuf(nx,ny,nz))  
       
@@ -230,7 +232,6 @@ contains
                end if
                call random_number(rand)
 
-
                if (kk.lt.1e-10) then
                   Cbuf(i,j,k) = 0.0_WP
                else
@@ -244,8 +245,8 @@ contains
       do j=nk+1,ny
          Cbuf(1,j,1)=conjg(Cbuf(1,ny+2-j,1))
       end do
-      call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf, FFTW_ESTIMATE)
-      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf, FFTW_ESTIMATE)  
+      call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf,FFTW_ESTIMATE)
+      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf,FFTW_ESTIMATE)  
    
       ! Inverse Fourier transform
       call dfftw_execute(plan_c2r)
@@ -298,7 +299,8 @@ contains
       ! Fourier Transform back to real
       call dfftw_execute(plan_c2r)
 
-      tmp_sc = Rbuf/real(nx*ny*nz,WP)
+      sc%SC=0.0_WP ! To set zero for ghost cells
+      sc%SC(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)=Rbuf/real(nx*ny*nz,WP)
 
       ! Destroy the plans
       call dfftw_destroy_plan(plan_c2r)
@@ -334,7 +336,6 @@ contains
          fs=lowmach(cfg=cfg,name='Variable density low Mach NS')
          ! Assign constant viscosity
          call param_read('Dynamic viscosity',visc); fs%visc=visc
-
          ! Use slip on the sides with correction
          call fs%add_bcond(name='ym_outflow',type=clipped_neumann,face='y',dir=-1,canCorrect=.true.,locator=ym_locator)
          call fs%add_bcond(name='yp_outflow',type=clipped_neumann,face='y',dir=+1,canCorrect=.true.,locator=yp_locator)
@@ -388,8 +389,6 @@ contains
 
          ! Scalar solver
          allocate(resSC(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
-         allocate(tmp_sc(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
-      
       end block allocate_work_arrays
       
       
@@ -407,21 +406,8 @@ contains
       initialize_scalar: block
          use vdscalar_class, only: bcond
          integer :: n,i,j,k
-         type(bcond), pointer :: mybc
-         ! Zero initial field
-         sc%SC=0.0_WP
-         tmp_SC = 0.0_WP
-         ! Apply BCs
-         call ignition_doubledelta(tmp_SC(:,:,:))
-         ! do k=sc%cfg%kmino_,sc%cfg%kmaxo_
-            do j=sc%cfg%jmino_,sc%cfg%jmax_
-               do i=sc%cfg%imino_+1,sc%cfg%imax_
-                  print *, i,j,tmp_sc(i,j,-1)
-                  sc%SC(i+1,j+1,:) = tmp_sc(i,j,-1)
-               end do
-            end do
-         ! end do
-
+         type(bcond), pointer :: mybc         
+         call ignition_doubledelta()
          ! Compute density
          call get_rho()
       end block initialize_scalar
