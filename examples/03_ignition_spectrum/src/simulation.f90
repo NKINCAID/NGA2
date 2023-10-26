@@ -183,9 +183,9 @@ contains
       complex(WP), dimension(:,:,:), pointer :: ak,bk
 
       ! Other
-      integer :: i,j,k,ik,iunit,dim,nx,ny,nz,nk
+      integer     :: i,j,k,ik,iunit,dim,nk_,wkmax_
       complex(WP) :: ii=(0.0_WP,1.0_WP)
-      real(WP) :: rand
+      real(WP)    :: rand
    
       ! Fourier coefficients
       integer(KIND=8) :: plan_r2c,plan_c2r
@@ -193,13 +193,10 @@ contains
       
       include 'fftw3.f03'
 
-      nx=sc%cfg%nx_
-      ny=sc%cfg%ny_
-      nz=sc%cfg%nz_
-
-      pi = acos(-1.0_WP) ! Create pi
-      dk = 2.0_WP*pi/Lx
-      nk = nx/2+1
+      pi=acos(-1.0_WP) ! Create pi
+      dk=2.0_WP*pi/(Lx/real(sc%cfg%nproc,WP))
+      nk_=(sc%cfg%imax_-sc%cfg%imin_+1)/2+1
+      wkmax_=sc%cfg%imin_+nk_-1
    
       ! Initialize in similar manner to Eswaran and Pope 1988
       call param_read('ks/ko',ksk0ratio)
@@ -208,19 +205,19 @@ contains
       kc = kcksratio*ks
    
       ! Allocate Cbuf and Rbuf
-      allocate(Cbuf(nk,ny,nz))
-      allocate(Rbuf(nx,ny,nz))  
+      allocate(Cbuf(sc%cfg%imin_:wkmax_      ,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_))
+      allocate(Rbuf(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_))  
       
       ! Compute the Fourier coefficients
-      do k=1,nz
-         do j=1,ny
-            do i=1,nk
+      do k=sc%cfg%kmin_,sc%cfg%kmax_
+         do j=sc%cfg%jmin_,sc%cfg%jmax_
+            do i=sc%cfg%imin_,wkmax_
                ! Wavenumbers
                kx=real(i-1,WP)*dk
                ky=real(j-1,WP)*dk
-               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
+               if (j.gt.wkmax_) ky=-real(sc%cfg%imax_+1-j,WP)*dk
                kz=real(k-1,WP)*dk
-               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
+               if (k.gt.wkmax_) kz=-real(sc%cfg%imax_+1-k,WP)*dk
                kk =sqrt(kx**2+ky**2+kz**2)
                kk2=sqrt(kx**2+ky**2)
                
@@ -242,19 +239,19 @@ contains
       end do
 
       ! Oddball and setting up plans based on geometry
-      do j=nk+1,ny
-         Cbuf(1,j,1)=conjg(Cbuf(1,ny+2-j,1))
+      do j=sc%cfg%imin_+nk_,sc%cfg%jmax_
+         Cbuf(1,j,1)=conjg(Cbuf(1,sc%cfg%jmax_+2-j,1))
       end do
-      call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf,FFTW_ESTIMATE)
-      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf,FFTW_ESTIMATE)  
+      call dfftw_plan_dft_c2r_2d(plan_c2r,sc%cfg%nx_,sc%cfg%ny_,Cbuf,Rbuf,FFTW_ESTIMATE)
+      call dfftw_plan_dft_r2c_2d(plan_r2c,sc%cfg%nx_,sc%cfg%ny_,Rbuf,Cbuf,FFTW_ESTIMATE)  
    
       ! Inverse Fourier transform
       call dfftw_execute(plan_c2r)
    
       ! Force 'double-delta' pdf on scalar field
-      do k=1,nz
-         do j=1,ny
-            do i=1,nx
+      do k=sc%cfg%kmin_,sc%cfg%kmax_
+         do j=sc%cfg%jmin_,sc%cfg%jmax_
+            do i=sc%cfg%imin_,sc%cfg%imax_
                if (Rbuf(i,j,k).le.0.0_WP) then
                   Rbuf(i,j,k) = 0.0_WP
                else
@@ -267,15 +264,15 @@ contains
       ! Fourier Transform and filter to smooth
       call dfftw_execute(plan_r2c)
    
-      do k=1,nz
-         do j=1,ny
-            do i=1,nk
+      do k=sc%cfg%kmin_,sc%cfg%kmax_
+         do j=sc%cfg%jmin_,sc%cfg%jmax_
+            do i=sc%cfg%imin_,wkmax_
                ! Wavenumbers
                kx=real(i-1,WP)*dk
                ky=real(j-1,WP)*dk
-               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
+               if (j.gt.wkmax_) ky=-real(sc%cfg%imax_+1-j,WP)*dk
                kz=real(k-1,WP)*dk
-               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
+               if (k.gt.wkmax_) kz=-real(sc%cfg%imax_+1-k,WP)*dk
                kk =sqrt(kx**2+ky**2+kz**2)
                kk2=sqrt(kx**2+ky**2)
                
@@ -285,22 +282,21 @@ contains
                else
                   Cbuf(i,j,k) = Cbuf(i,j,k) * (kc/kk)**2
                end if
-
-               
             end do
          end do
       end do
 
       ! Oddball
-      do j=nk+1,ny
-         Cbuf(1,j,1)=conjg(Cbuf(1,ny+2-j,1))
+      do j=sc%cfg%imin_+nk_,sc%cfg%jmax_
+         Cbuf(1,j,1)=conjg(Cbuf(1,sc%cfg%jmax_+2-j,1))
       end do
 
       ! Fourier Transform back to real
       call dfftw_execute(plan_c2r)
 
       sc%SC=0.0_WP ! To set zero for ghost cells
-      sc%SC(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)=Rbuf/real(nx*ny*nz,WP)
+      sc%SC(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)=Rbuf/real(sc%cfg%nx_*sc%cfg%ny_*sc%cfg%nz_,WP)
+      call sc%cfg%sync(sc%SC)
 
       ! Destroy the plans
       call dfftw_destroy_plan(plan_c2r)
@@ -397,6 +393,7 @@ contains
          time=timetracker(amRoot=fs%cfg%amRoot)
          call param_read('Max timestep size',time%dtmax)
          call param_read('Max cfl number',time%cflmax)
+         call param_read('Max time',time%tmax)
          time%dt=time%dtmax
          time%itmax=2
       end block initialize_timetracker
