@@ -30,10 +30,11 @@ module simulation
    public :: simulation_init,simulation_run,simulation_final
    
    !> Private work arrays
-   real(WP), dimension(:,:,:), allocatable :: resU,resV,resW,resSC
-   real(WP), dimension(:,:,:), allocatable :: Ui,Vi,Wi
-   real(WP), dimension(:,:,:,:), allocatable :: SR
+   real(WP), dimension(:,:,:),     allocatable :: resU,resV,resW,resSC
+   real(WP), dimension(:,:,:),     allocatable :: Ui,Vi,Wi
+   real(WP), dimension(:,:,:,:),   allocatable :: SR
    real(WP), dimension(:,:,:,:,:), allocatable :: gradU
+   real(WP), dimension(:,:,:),     allocatable :: tmp_sc
    
    !> Equation of state
    real(WP) :: rho0,rho1
@@ -163,9 +164,7 @@ contains
    end subroutine get_rho
 
 
-   ! ===================================================== !
-   ! Initialize a double delta field                       !
-   ! ===================================================== !
+   !> Initialize a double delta field
    subroutine ignition_doubledelta(Lbu)
       use precision
       use param,    only: param_read
@@ -351,10 +350,10 @@ contains
       ! Fourier Transform back to real
       call dfftw_execute(plan_c2r)
 
-      ! To set zero for ghost cells and buffer region
-      sc%SC=0.0_WP
+      ! Set zero in the buffer region
+      tmp_sc=0.0_WP
       ! Set the internal scalar field
-      sc%SC(imin:imax,jmin:jmax,kmin:kmax)=Rbuf/real(nx*ny*nz,WP)
+      tmp_sc(imin:imax,jmin:jmax,kmin:kmax)=Rbuf/real(nx*ny*nz,WP)
 
       ! Destroy the plans
       call dfftw_destroy_plan(plan_c2r)
@@ -381,9 +380,7 @@ contains
       call param_read('Z spot',Z_spot)
       call param_read('Z air',Z_air)
 
-      call param_read('Buffer region length',L_buffer)
 
-      
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
          use hypre_str_class, only: pcg_pfmg
@@ -444,7 +441,9 @@ contains
          allocate(SR  (1:6,cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_))
          allocate(gradU(1:3,1:3,cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_))
          ! Scalar solver
-         allocate(resSC(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
+         allocate(resSC (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
+         ! Temporary scalar field for initialization
+         allocate(tmp_sc(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
       end block allocate_work_arrays
       
       
@@ -462,22 +461,31 @@ contains
       ! Initialize our mixture fraction field
       initialize_scalar: block
          use vdscalar_class, only: bcond
-         integer :: n,i,j,k
+         use parallel,       only: MPI_REAL_WP
+         integer :: n,i,j,k,ierr
          type(bcond), pointer :: mybc
-         ! Initialize the scalar field
-         call ignition_doubledelta(L_buffer)
+         ! Read in the buffer region length
+         call param_read('Buffer region length',L_buffer)
+         ! Initialize the global scalar field
+         if (sc%cfg%amRoot) call ignition_doubledelta(L_buffer)
+         ! Communicate information
+         call MPI_BCAST(tmp_sc,sc%cfg%nx*sc%cfg%ny*sc%cfg%nz,MPI_REAL_WP,0,sc%cfg%comm,ierr)
+         ! Set the local scalar field
+         sc%SC(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)=tmp_sc(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)
+         ! Release memory
+         deallocate(tmp_sc)
          ! Compute density
          call get_rho()
       end block initialize_scalar
       
-           ! Initialize our velocity field
+
+      ! Initialize our velocity field
       initialize_velocity: block
          use lowmach_class, only: bcond
          integer :: n,i,j,k
          type(bcond), pointer :: mybc
          ! Zero initial field
          fs%U=0.0_WP; fs%V=0.0_WP; fs%W=0.0_WP
-
          ! Set density from scalar
          fs%rho=sc%rho
          ! Form momentum
