@@ -31,7 +31,7 @@ module chemtable_class
 
       ! Mapping variables of the chemtable
       integer :: n1,n2,n3
-      real(WP) :: x1min, x1max, x2min, x2max, x3min, x3max
+      real(WP) :: x1min,x1max,x2min,x2max,x3min,x3max
       real(WP), dimension(:), allocatable :: x1,x2,x3
 
       ! Number of variables tabulated
@@ -134,7 +134,6 @@ contains
       real(WP), dimension(n), intent(in)  :: A1,A2,A3
       real(WP), dimension(n), intent(out) :: R
       integer, intent(in) :: n
-      real(WP) :: sc_min,sc_max
       integer :: var_ind,i,j
 
       ! If density call another routine

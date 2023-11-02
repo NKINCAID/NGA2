@@ -69,7 +69,7 @@ contains
       implicit none
       type(diffusionTable) :: self
       class(flameletlib), target, intent(in) :: flmlib
-  
+
       ! Point to the flmlib object
       self%flmlib=>flmlib
 
@@ -77,6 +77,7 @@ contains
       call param_read('Number of points for mean Z',self%nZMean)
       call param_read('Number of points for variance of Z',self%nZVar)
       call param_read('Number of points for third direction',self%n3)
+      if (self%n3.lt.self%flmlib%nfiles) print*,'WARNING: No. points for the third direction is less than the number of flamelet files'
 
       call param_read('Stoichiometric mixture fraction',self%Zst)
 
@@ -165,19 +166,23 @@ contains
       max3=maxval(this%postconv(this%flmlib%nvar_in,:,:,:))
       min3=minval(this%postconv(this%flmlib%nvar_in,:,:,:))
 
-      ! Linear or log progression
-      select case(trim(this%Z3_scale))
-       case ('lin')
-         do i3=1,this%n3
-            this%Z3(i3)=min3+real(i3-1,WP)*(max3-min3)/real(this%n3-1,WP)
-         end do
-       case ('log')
-         do i3=1,this%n3
-            this%Z3(i3)=min3*(max3/min3)**(real(i3-1,WP)/real(this%n3-1,WP))
-         end do
-       case default
-         call die("[create_Z3] Unknown Scale for third direction")
-      end select
+      if ((this%n3.eq.1).and.(min3.eq.max3)) then
+         this%Z3=min3
+      else
+         ! Linear or log progression
+         select case(trim(this%Z3_scale))
+         case ('lin')
+            do i3=1,this%n3
+               this%Z3(i3)=min3+real(i3-1,WP)*(max3-min3)/real(this%n3-1,WP)
+            end do
+         case ('log')
+            do i3=1,this%n3
+               this%Z3(i3)=min3*(max3/min3)**(real(i3-1,WP)/real(this%n3-1,WP))
+            end do
+         case default
+            call die("[create_Z3] Unknown Scale for third direction")
+         end select
+      end if
    end subroutine create_Z3
 
    subroutine create_beta_pdf(this,zm,zv)
@@ -253,7 +258,7 @@ contains
 
       ! Prepare the convolution
       allocate(this%pdf(this%flmlib%nPoints))
-      
+
       ! Convolution
       do izv=1,this%nZVar
          do izm=1,this%nZMean
@@ -292,7 +297,7 @@ contains
       ! ! Get the number of name conversions
       !    call parser_getsize('Name conversion',n)
       !    if (mod(n,3).ne.0) stop "diffusion_table_convert_names: Problem in the definition of conversion names"
-         
+
       !    Allocate array and read
       !    allocate(conversion(n))
       !    call parser_read('Name conversion',conversion)
@@ -408,7 +413,7 @@ contains
    subroutine stats(this)
       implicit none
       class(diffusionTable), intent(inout) :: this
-      integer :: var
+      integer :: var,i,j,k
 
       print*,''
 
@@ -420,7 +425,7 @@ contains
       write(*,11) 'ZVAR        ', minval(this%ZVar), maxval(this%ZVar)
       write(*,11) this%flmlib%input_name(this%flmlib%nvar_in), minval(this%Z3), maxval(this%Z3)
       print*,''
-      
+
       ! Min and Max of all the mapped quantities
       print*, '** Mapped quantities **'
       write(*,10) 'Variable       ','Min       ','Max       '
@@ -429,6 +434,24 @@ contains
          write(*,11) this%output_name(var),minval(this%output_data(:,:,:,var)),maxval(this%output_data(:,:,:,var))
       end do
       print*,''
+
+      ! print*,'DEBUG'
+      ! do k=1,this%n3
+      !    print*,'k = ',k
+      !    print*,'chi(k) = ',this%Z3(k)
+      !    print*,''
+      !    print*,''
+      !    print*,''
+      !    do j=1,this%nZVar
+      !       print*,'     j = ',j
+      !       print*,'     Zvar(j) = ',this%ZVar(j)
+      !       do i = 1,this%nZMean
+      !          print*,'     i = ',i,', Zmean(i) = ',this%ZMean(i),', rho(i,j,k) = ',this%output_data(i,j,k,1)
+      !       end do
+      !       print*,''
+      !       print*,''
+      !    end do
+      ! end do
 
 10    format (A15,'  ',A12,'  ',A12)
 11    format (A15,'  ',ES12.4,'  ',ES12.4)

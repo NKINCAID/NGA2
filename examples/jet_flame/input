@@ -1,0 +1,36 @@
+# Parallelization
+Partition :	8 1 1
+
+# Mesh definition
+Lx : 10
+Ly : 5
+Lz : 0.01953125
+nx : 512
+ny : 256
+nz : 1
+
+# Inflow definition
+Z jet    : 1
+D jet    : 1
+U jet    : 1
+Z coflow : 0.2
+D coflow : 3
+U coflow : 0.2
+
+# Combustion
+Chemtable file name : chemtable
+Filtering levels    : 1
+Density limiter     : false
+
+# Time integration
+Max timestep size :	1e-2
+Max cfl number    :	0.6
+Sub iterations    : 3
+Max time          : 50
+
+# Pressure solver
+Pressure tolerance : 1e-6
+Pressure iteration : 50
+
+# Ensight output
+Ensight output period : 1.5e-2

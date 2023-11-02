@@ -759,9 +759,9 @@ contains
 
       ! Gauss gradient computation
       SCgradx=0.0_WP; SCgrady=0.0_WP; SCgradz=0.0_WP
-      do k=this%cfg%kmin_,this%cfg%kmax_
-         do j=this%cfg%jmin_,this%cfg%jmax_
-            do i=this%cfg%imin_,this%cfg%imax_
+      do k=this%cfg%kmin_,this%cfg%kmax_+1
+         do j=this%cfg%jmin_,this%cfg%jmax_+1
+            do i=this%cfg%imin_,this%cfg%imax_+1
                SCf=sum(itpr_x(:,i,j,k)*this%SC(i-1:i,j,k))
                SCgradx(i-1,j,k)=SCgradx(i-1,j,k)+SCf/this%cfg%dx(i-1)
                SCgradx(i  ,j,k)=SCgradx(i  ,j,k)-SCf/this%cfg%dx(i  )
@@ -774,9 +774,6 @@ contains
             end do
          end do
       end do
-      ! Sync the components
-      call this%cfg%sync(SCgradx); call this%cfg%sync(SCgrady); call this%cfg%sync(SCgradz)
-
       ! Take the magnitude squared
       do k=this%cfg%kmin_,this%cfg%kmax_
          do j=this%cfg%jmin_,this%cfg%jmax_
@@ -785,8 +782,6 @@ contains
             end do
          end do
       end do
-      ! Sync it
-      call this%cfg%sync(SCgradMagSq)
    end function grad_mag_sq
 
    
