@@ -42,7 +42,7 @@ module tpscalar_class
       character(len=str_medium) :: name='UNNAMED_SCALAR'  !< Solver name (default=UNNAMED_SCALAR)
       
       ! Constant property fluid, but diffusivity is still a field due to LES modeling
-      integer, dimension(:), allocatable :: phase         !< This is the phase for each scalar (0=gas, 1=liquid)
+      integer, dimension(:), allocatable :: phase         !< This is the phase for each scalar (0=liquid, 1=gas)
       real(WP), dimension(:,:,:,:), allocatable :: diff   !< These is our constant+SGS dynamic diffusivity for the scalar
       
       ! Boundary condition list
@@ -73,10 +73,10 @@ module tpscalar_class
       real(WP), dimension(:), allocatable :: SCmax,SCmin,SCint   !< Maximum and minimum, integral scalar
       
    contains
-      procedure :: print=>multiscalar_print               !< Output solver to the screen
+      procedure :: initialize                             !< Initialization of the scalar solver
+      procedure :: print=>tpscalar_print                  !< Output solver to the screen
       procedure, private :: init_metrics                  !< Initialize metrics
       procedure, private :: adjust_metrics                !< Adjust metrics
-      procedure :: initialize                             !< Initialization of the scalar solver
       procedure :: setup                                  !< Finish configuring the scalar solver
       procedure :: add_bcond                              !< Add a boundary condition
       procedure :: get_bcond                              !< Get a boundary condition
@@ -94,7 +94,7 @@ contains
    subroutine initialize(this,cfg,nscalar,name)
       use messager, only: die
       implicit none
-      class(tpscalar) :: this
+      class(tpscalar), intent(inout) :: this
       class(config), target, intent(in) :: cfg
       integer, intent(in) :: nscalar
       character(len=*), optional :: name
@@ -697,15 +697,15 @@ contains
    end subroutine solve_implicit
    
    
-   !> Print out info for multiscalar solver
-   subroutine multiscalar_print(this)
+   !> Print out info for tpscalar solver
+   subroutine tpscalar_print(this)
       use, intrinsic :: iso_fortran_env, only: output_unit
       implicit none
       class(tpscalar), intent(in) :: this
       if (this%cfg%amRoot) then
          write(output_unit,'("Two-phase scalar solver [",a,"] with [",i3,"] scalars for config [",a,"]")') trim(this%name),this%nscalar,trim(this%cfg%name)
       end if
-   end subroutine multiscalar_print
+   end subroutine tpscalar_print
    
    
 end module tpscalar_class
