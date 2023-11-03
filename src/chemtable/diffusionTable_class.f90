@@ -435,24 +435,6 @@ contains
       end do
       print*,''
 
-      ! print*,'DEBUG'
-      ! do k=1,this%n3
-      !    print*,'k = ',k
-      !    print*,'chi(k) = ',this%Z3(k)
-      !    print*,''
-      !    print*,''
-      !    print*,''
-      !    do j=1,this%nZVar
-      !       print*,'     j = ',j
-      !       print*,'     Zvar(j) = ',this%ZVar(j)
-      !       do i = 1,this%nZMean
-      !          print*,'     i = ',i,', Zmean(i) = ',this%ZMean(i),', rho(i,j,k) = ',this%output_data(i,j,k,1)
-      !       end do
-      !       print*,''
-      !       print*,''
-      !    end do
-      ! end do
-
 10    format (A15,'  ',A12,'  ',A12)
 11    format (A15,'  ',ES12.4,'  ',ES12.4)
    end subroutine stats

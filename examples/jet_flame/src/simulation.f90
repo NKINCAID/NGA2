@@ -36,7 +36,7 @@ module simulation
    !> Private work arrays
    real(WP), dimension(:,:,:), allocatable :: resU,resV,resW,resSC
    real(WP), dimension(:,:,:), allocatable :: Ui,Vi,Wi
-   real(WP), dimension(:,:,:), allocatable :: drho
+   real(WP), dimension(:,:,:,:,:), allocatable :: gradU
 
    !> Inlet
    real(WP) :: Z_jet,Z_cof
@@ -47,10 +47,14 @@ module simulation
    real(WP) :: int_RP=0.0_WP
 
    !> Combustion
-   integer :: nfilter,ncells
-   logical :: rho_limiter
-   real    :: rho_min,rho_max
+   integer  :: nfilter,ncells
+   logical  :: rho_limiter
+   real(WP) :: rho_min,rho_max
+   real(WP), dimension(:,:,:), allocatable :: drho
    real(WP), dimension(:,:,:), allocatable :: ZgradMagSq
+
+   !> Turbulence
+   ! real(WP) :: SchmidtSGS
 
 contains
 
@@ -174,6 +178,8 @@ contains
       integer  :: i,j,k,ierr,n
       real(WP) :: vol,my_vol,volume,my_drho,my_drho2,drho_mean,drho2_mean,sdt
       real(WP), dimension(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_) :: Fdrho
+
+      ! Find the deviation from mean
       my_vol  =0.0_WP
       my_drho =0.0_WP
       my_drho2=0.0_WP
@@ -193,6 +199,8 @@ contains
       drho_mean =drho_mean /volume
       drho2_mean=drho2_mean/volume
       sdt=sqrt(abs(drho2_mean-drho_mean**2))
+
+      ! Perform the filtering
       do n=1,nfilter
          Fdrho=drho
          do k=sc%cfg%kmin_,sc%cfg%kmax_
@@ -209,34 +217,6 @@ contains
          call sc%cfg%sync(drho)
       end do
    end subroutine filter_drho
-
-
-   !> Obtain density from equation of state based on Burke-Schumann
-   subroutine get_rho()
-      implicit none
-      integer :: i,j,k
-      do k=sc%cfg%kmino_,sc%cfg%kmaxo_
-         do j=sc%cfg%jmino_,sc%cfg%jmaxo_
-            do i=sc%cfg%imino_,sc%cfg%imaxo_
-               sc%rho(i,j,k)=burke_schumann(sc%SC(i,j,k))
-            end do
-         end do
-      end do
-   end subroutine get_rho
-
-
-   !> Burke-Schumann EOS
-   function burke_schumann(Z) result(rho)
-      real(WP), intent(in) :: Z
-      real(WP) :: rho,rho0=1.0_WP,rho1=1.0_WP,rhost=0.2_WP
-      real(WP) :: Zclip,Zst=0.5_WP
-      Zclip=min(max(Z,0.0_WP),1.0_WP)
-      if (Zclip.le.Zst) then
-         rho=Zst*rho0*rhost/(rhost*(Zst-Zclip)+rho0*Zclip)
-      else
-         rho=(1.0_WP-Zst)*rhost*rho1/(rho1*(1.0_WP-Zclip)+rhost*(Zclip-Zst))
-      end if
-   end function burke_schumann
 
 
    !> Initialization of problem solver
@@ -261,18 +241,10 @@ contains
          real(WP) :: visc
          ! Create flow solver
          fs=lowmach(cfg=cfg,name='Variable density low Mach NS')
-         ! Assign constant viscosity
-         ! call param_read('Dynamic viscosity',visc); fs%visc=visc
          ! Define jet and coflow boundary conditions
          call fs%add_bcond(name='jet'   ,type=dirichlet,face='x',dir=-1,canCorrect=.false.,locator=jet   )
          call fs%add_bcond(name='coflow',type=dirichlet,face='x',dir=-1,canCorrect=.false.,locator=coflow)
-         ! Use slip on the sides with correction
-         !call fs%add_bcond(name='yp',type=slip,face='y',dir=+1,canCorrect=.true.,locator=yp_locator)
-         !call fs%add_bcond(name='ym',type=slip,face='y',dir=-1,canCorrect=.true.,locator=ym_locator)
-         !call fs%add_bcond(name='zp',type=slip,face='z',dir=+1,canCorrect=.true.,locator=zp_locator)
-         !call fs%add_bcond(name='zm',type=slip,face='z',dir=-1,canCorrect=.true.,locator=zm_locator)
          ! Outflow on the right
-         !call fs%add_bcond(name='outflow',type=clipped_neumann,face='x',dir=+1,canCorrect=.false.,locator=xp_locator)
          call fs%add_bcond(name='outflow',type=clipped_neumann,face='x',dir=+1,canCorrect=.true.,locator=xp_locator)
          ! Configure pressure solver
          ps=hypre_str(cfg=cfg,name='Pressure',method=pcg_pfmg2,nst=7)
@@ -297,9 +269,6 @@ contains
          call sc%add_bcond(name='coflow',type=dirichlet,locator=coflowsc)
          ! Outflow on the right
          call sc%add_bcond(name='outflow',type=neumann,locator=xp_locator,dir='+x')
-         ! Assign constant diffusivity
-         ! call param_read('Dynamic diffusivity',diffusivity)
-         ! sc%diff=diffusivity
          ! Configure implicit scalar solver
          ss=ddadi(cfg=cfg,name='Scalar',nst=13)
          ! Setup the solver
@@ -321,9 +290,10 @@ contains
       end block create_combustion_model
 
 
-      ! Create a SGS model for LES
+      ! Create a SGS model
       create_sgs: block
          sgs=sgsmodel(cfg=fs%cfg,umask=fs%umask,vmask=fs%vmask,wmask=fs%wmask)
+         ! call param_read('SGS Schmidt number',SchmidtSGS)
       end block create_sgs
 
 
@@ -341,12 +311,14 @@ contains
          ! Combustion
          allocate(drho      (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_)); drho=0.0_WP
          allocate(ZgradMagSq(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_)); ZgradMagSq=0.0_WP
+         ! Turbulence
+         allocate(gradU(1:3,1:3,cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_))
       end block allocate_work_arrays
 
 
       ! Initialize time tracker with subiterations
       initialize_timetracker: block
-         time=timetracker(amRoot=fs%cfg%amRoot)
+         time=timetracker(amRoot=fs%cfg%amRoot,name='jet_flame')
          call param_read('Max timestep size',time%dtmax)
          call param_read('Max cfl number',time%cflmax)
          call param_read('Max time',time%tmax)
@@ -358,29 +330,10 @@ contains
       ! Initialize our mixture fraction field
       initialize_scalar: block
          use vdscalar_class, only: bcond
-         ! use parallel,       only: MPI_REAL_WP
-         integer :: n,i,j,k!,ierr
+         integer :: n,i,j,k
          type(bcond), pointer :: mybc
-         real(WP) :: r
-         ! DEBUG
-         real(WP), dimension(:,:,:), allocatable :: tmp_sc
-         allocate(tmp_sc(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
          ! Zero initial field
          sc%SC=0.0_WP
-
-         ! if(sc%cfg%amRoot) then
-         !    do i=sc%cfg%imin,sc%cfg%imax
-         !       tmp_sc(i,:,:)=1.0_WP-real(i-1,WP)/real(sc%cfg%nx-1,WP)
-         !    end do
-         ! end if
-         ! ! Communicate information
-         ! call MPI_BCAST(tmp_sc,sc%cfg%nx*sc%cfg%ny*sc%cfg%nz,MPI_REAL_WP,0,sc%cfg%comm,ierr)
-         ! ! Set the local scalar field
-         ! sc%SC(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)=tmp_sc(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)
-         ! call sc%cfg%sync(sc%SC)
-         ! ! Release memory
-         ! deallocate(tmp_sc)
-
          ! Apply BCs
          call sc%get_bcond('jet',mybc)
          do n=1,mybc%itr%no_
@@ -403,16 +356,13 @@ contains
          call flm%chmtbl%lookup('diffusivity',sc%diff,sc%SC,flm%Zvar,flm%chi,ncells)
          ! Mixture fraction gradient
          ZgradMagSq=sc%grad_mag_sq(itpr_x=fs%itpr_x,itpr_y=fs%itpr_y,itpr_z=fs%itpr_z)
-         ! Scalar dissipation rate
-         ! call flm%compute_chi(mueff=fs%visc,rho=sc%rho,ZgradMagSq=ZgradMagSq)
          ! Mixture fraction variance
          call flm%compute_Zvar(delta=sgs%delta,ZgradMagSq=ZgradMagSq,Z=sc%SC)
          ! Lookup density
          call flm%chmtbl%lookup('density',sc%rho,sc%SC,flm%Zvar,flm%chi,ncells)
-         ! call get_rho()
          ! Find the min and max for rho
-         rho_min=minval(sc%rho)
-         rho_max=maxval(sc%rho)
+         call flm%chmtbl%lookup_max('density',rho_max)
+         call flm%chmtbl%lookup_min('density',rho_min)
       end block initialize_combustion
 
 
@@ -421,7 +371,6 @@ contains
          use lowmach_class, only: bcond
          integer :: n,i,j,k
          type(bcond), pointer :: mybc
-         real(WP) :: r
          ! Zero initial field
          fs%U=0.0_WP; fs%V=0.0_WP; fs%W=0.0_WP
          ! Apply all boundary conditions
@@ -451,7 +400,7 @@ contains
       ! Add Ensight output
       create_ensight: block
          ! Create Ensight output from cfg
-         ens_out=ensight(cfg=cfg,name='vdjet')
+         ens_out=ensight(cfg=cfg,name='jet_flame')
          ! Create event for Ensight output
          ens_evt=event(time=time,name='Ensight output')
          call param_read('Ensight output period',ens_evt%tper)
@@ -461,11 +410,10 @@ contains
          call ens_out%add_scalar('divergence',fs%div)
          call ens_out%add_scalar('density',sc%rho)
          call ens_out%add_scalar('mixfrac',sc%SC)
-         call ens_out%add_scalar('visc',fs%visc)
+         call ens_out%add_scalar('viscosity',fs%visc)
          call ens_out%add_scalar('diffusivity',sc%diff)
          call ens_out%add_scalar('chi',flm%chi)
          call ens_out%add_scalar('Zvar',flm%Zvar)
-         call ens_out%add_scalar('ZgradMagSq',ZgradMagSq)
          ! Output to ensight
          if (ens_evt%occurs()) call ens_out%write_data(time%t)
       end block create_ensight
@@ -558,6 +506,16 @@ contains
          ! Scalar dissipation rate
          call flm%compute_chi(mueff=fs%visc,rho=sc%rho,ZgradMagSq=ZgradMagSq)
          
+         ! Turbulence modeling
+         ! sgs_modeling: block
+         !    use sgsmodel_class, only: vreman
+         !    resU=fs%rho
+         !    call fs%get_gradu(gradU)
+         !    call sgs%get_visc(type=vreman,dt=time%dtold,rho=resU,gradu=gradU)
+         !    fs%visc=fs%visc+sgs%visc
+         !    sc%diff=sc%diff+sgs%visc/SchmidtSGS
+         ! end block sgs_modeling
+
          ! Perform sub-iterations
          do while (time%it.le.time%itmax)
 
@@ -597,17 +555,12 @@ contains
             end block dirichlet_scalar
             ! ===================================================
 
-            ! ============ UPDATE PROPERTIES ====================
+            ! ============ UPDATE DENSITY ====================
 
             ! Lookup density
             call flm%chmtbl%lookup('density',sc%rho,sc%SC,flm%Zvar,flm%chi,ncells)
-            ! call get_rho()
+            ! Smooth density
             if (nfilter.gt.0) then
-               ! Find the min and max for rho
-               if (rho_limiter) then
-                  rho_min=minval(sc%rho)
-                  rho_max=maxval(sc%rho)
-               end if
                ! Compute density changes
                drho=sc%rho-sc%rhoold
                ! Filter density changes
@@ -617,7 +570,7 @@ contains
                ! Bound density
                if (rho_limiter) then
                   sc%rho=max(min(sc%rho,rho_max),rho_min)
-                  call sc%cfg%sync(sc%SC)
+                  call sc%cfg%sync(sc%rho)
                end if
             end if
             ! ===================================================
@@ -725,7 +678,7 @@ contains
       ! timetracker
 
       ! Deallocate work arrays
-      deallocate(resSC,resU,resV,resW,Ui,Vi,Wi)
+      deallocate(resSC,resU,resV,resW,Ui,Vi,Wi,drho,ZgradMagSq)
 
    end subroutine simulation_final
 
