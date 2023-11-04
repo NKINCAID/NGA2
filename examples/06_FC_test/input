@@ -1,0 +1,48 @@
+# Parallelization
+Partition : 1 1 1
+
+# Mesh definition
+Lx : 1
+Ly : 1
+Lz : 0.01
+nx : 128
+ny : 128
+nz : 1
+
+# EOS parameters: rho(Z)=rho0*rho1/((1-Z)*rho1+Z*rho0)
+rho0 : 0.2
+rho1 : 1
+
+# Fluid properties
+Dynamic viscosity   : 0.001
+Dynamic diffusivity : 1.0e-5
+
+# Inflow definition
+Spot radius : 1
+Spot shift  = 2.5
+Z spot      : 0.2
+Z air       : 1
+
+ks/ko : 1.5
+kc/ks : 2
+Buffer region length : 0.15
+
+Forcing constant : 1.0
+
+# Time integration
+Max timestep size :	1e-2
+Max cfl number    :	0.8
+Max time          : 1
+
+# Pressure solver
+Pressure tolerance : 1e-6
+Pressure iteration : 100
+
+# Ensight output
+Ensight output period : 1e-2
+
+Stoich moles fuel : 0.05405405405405406
+Fuel : POSF11498
+Oxidizer : air
+
+T init : 750
