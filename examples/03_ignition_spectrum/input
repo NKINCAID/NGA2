@@ -23,11 +23,15 @@ Spot shift  = 2.5
 Z spot      : 0.2
 Z air       : 1
 
+# Initial conditions
 ks/ko : 5
 kc/ks : 2
 Buffer region length : 0.1
-
-Forcing constant : 1.0
+Forcing constant     : 1.0
+Velocity fluctuation : 0.1
+Energetic scale      : 0.3
+Dissipative scale    : 0.01
+Dissipation          : 1e-3
 
 # Time integration
 Max timestep size :	2e-2

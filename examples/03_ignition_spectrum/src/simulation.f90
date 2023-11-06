@@ -12,51 +12,51 @@ module simulation
    use monitor_class,     only: monitor
    implicit none
    private
-   
+
    !> Single low Mach flow solver and scalar solver and corresponding time tracker
    type(hypre_str),   public :: ps
    type(ddadi),       public :: vs,ss
    type(lowmach),     public :: fs
    type(vdscalar),    public :: sc
    type(timetracker), public :: time
-   
+
    !> Ensight postprocessing
    type(ensight) :: ens_out
    type(event)   :: ens_evt
-   
+
    !> Simulation monitor file
    type(monitor) :: mfile,cflfile,consfile
-   
+
    public :: simulation_init,simulation_run,simulation_final
-   
+
    !> Private work arrays
    real(WP), dimension(:,:,:),     allocatable :: resU,resV,resW,resSC
    real(WP), dimension(:,:,:),     allocatable :: Ui,Vi,Wi
    real(WP), dimension(:,:,:,:),   allocatable :: SR
    real(WP), dimension(:,:,:,:,:), allocatable :: gradU
-   real(WP), dimension(:,:,:),     allocatable :: tmp_sc
-   
+   real(WP), dimension(:,:,:),     allocatable :: tmp_sc,tmp_U,tmp_V
+
    !> Equation of state
    real(WP) :: rho0,rho1
    real(WP) :: Z_spot,Z_air
    real(WP) :: radius, shift
-   
+
    !> Fluid, forcing, and particle parameters
    real(WP) :: visc,meanU,meanV,meanW
    real(WP) :: Urms0,TKE0,EPS0,Re_max
    real(WP) :: TKE,URMS
    real(WP) :: tauinf,G,Gdtau,Gdtaui,dx
    real(WP) :: L_buffer
-   
+
    !> For monitoring
    real(WP) :: EPS
    real(WP) :: Re_L,Re_lambda
    real(WP) :: eta,ell
    real(WP) :: dx_eta,ell_Lx,Re_ratio,eps_ratio,tke_ratio,nondtime
-   
+
 
 contains
-   
+
 
    !> Function that localizes y- boundary
    function ym_locator(pg,i,j,k) result(isIn)
@@ -67,8 +67,8 @@ contains
       isIn=.false.
       if (j.eq.pg%jmin) isIn=.true.
    end function ym_locator
-   
-   
+
+
    !> Function that localizes y+ boundary
    function yp_locator(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
@@ -100,8 +100,8 @@ contains
       isIn=.false.
       if (i.eq.pg%imax+1) isIn=.true.
    end function xp_locator
-   
-   
+
+
    !> Function that localizes jet at -x
    function xm_scalar(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
@@ -113,7 +113,7 @@ contains
    end function xm_scalar
 
 
-  !> Function that localizes the right domain boundary
+   !> Function that localizes the right domain boundary
    function xp_scalar(pg, i, j, k) result(isIn)
       use pgrid_class, only: pgrid
       class(pgrid), intent(in) :: pg
@@ -122,8 +122,8 @@ contains
       isIn = .false.
       ! if (i .ge. pg%imax) isIn = .true.
       if (i .eq. pg%imax) isIn = .true.
-    end function xp_scalar
-   
+   end function xp_scalar
+
 
    !> Function that localizes y- boundary
    function ym_scalar(pg,i,j,k) result(isIn)
@@ -134,8 +134,8 @@ contains
       isIn=.false.
       if (j.eq.pg%jmin-1) isIn=.true.
    end function ym_scalar
-   
-   
+
+
    !> Function that localizes y+ boundary
    function yp_scalar(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
@@ -183,15 +183,15 @@ contains
       real(WP)  :: tmp_mean,tmp_rms
       ! Spectrum computation
       real(WP) :: alpha,spec_amp,eps,amp_disc,e_total,energy_spec
-      real(WP), dimension(:,:), pointer :: spect
+      ! real(WP), dimension(:,:), pointer :: spect
       complex(WP), dimension(:,:,:), pointer :: ak,bk
       ! Other
       integer     :: i,j,k,ik,iunit,dim,nk,imin,imax,jmin,jmax,kmin,kmax,nx,ny,nz
       complex(WP) :: ii=(0.0_WP,1.0_WP)
-      real(WP)    :: rand   
+      real(WP)    :: rand
       ! Fourier coefficients
       integer(KIND=8) :: plan_r2c,plan_c2r
-      complex(WP), dimension(:,:,:), pointer :: Uk,Vk,Wk
+      complex(WP), dimension(:,:,:), pointer :: Uk,Vk!,Wk
 
       include 'fftw3.f03'
 
@@ -221,8 +221,8 @@ contains
       jmin=sc%cfg%jmin
       do j=sc%cfg%jmin,sc%cfg%jmax
          if (sc%cfg%ym(j).gt.sc%cfg%y(sc%cfg%jmin)+Lbu) then
-         jmin=j
-         exit
+            jmin=j
+            exit
          end if
       end do
       jmax=sc%cfg%jmax
@@ -237,8 +237,8 @@ contains
       kmin=sc%cfg%kmin
       do k=sc%cfg%kmin,sc%cfg%kmax
          if (sc%cfg%zm(k).gt.sc%cfg%z(sc%cfg%kmin)+Lbu) then
-         kmin=k
-         exit
+            kmin=k
+            exit
          end if
       end do
       kmax=sc%cfg%kmax
@@ -254,17 +254,17 @@ contains
       ny=jmax-jmin+1
       nz=kmax-kmin+1
       nk=nx/2+1
-   
+
       ! Initialize in similar manner to Eswaran and Pope 1988
       call param_read('ks/ko',ksk0ratio)
       ks=ksk0ratio*dk
       call param_read('kc/ks',kcksratio)
       kc=kcksratio*ks
-   
+
       ! Allocate Cbuf and Rbuf
       allocate(Cbuf(nk,ny,nz))
       allocate(Rbuf(nx,ny,nz))
-      
+
       ! Compute the Fourier coefficients
       do k=1,nz
          do j=1,ny
@@ -277,7 +277,7 @@ contains
                if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
                kk =sqrt(kx**2+ky**2+kz**2)
                kk2=sqrt(kx**2+ky**2)
-               
+
                ! Compute the Fourier coefficients
                if ((ks-dk/2.0_WP.le.kk).and.(kk.le.ks+dk/2.0_WP)) then
                   f_phi = 1.0_WP
@@ -299,11 +299,11 @@ contains
          Cbuf(1,j,1)=conjg(Cbuf(1,ny+2-j,1))
       end do
       call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf,FFTW_ESTIMATE)
-      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf,FFTW_ESTIMATE)  
-   
+      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf,FFTW_ESTIMATE)
+
       ! Inverse Fourier transform
       call dfftw_execute(plan_c2r)
-   
+
       ! Force 'double-delta' pdf on scalar field
       do k=1,nz
          do j=1,ny
@@ -319,7 +319,7 @@ contains
 
       ! Fourier Transform and filter to smooth
       call dfftw_execute(plan_r2c)
-   
+
       do k=1,nz
          do j=1,ny
             do i=1,nk
@@ -331,7 +331,7 @@ contains
                if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
                kk =sqrt(kx**2+ky**2+kz**2)
                kk2=sqrt(kx**2+ky**2)
-               
+
                ! Filter to remove high wavenumber components
                if (kk.le.kc) then
                   Cbuf(i,j,k) = Cbuf(i,j,k) * 1.0_WP
@@ -362,14 +362,224 @@ contains
       ! Clean up
       deallocate(Cbuf)
       deallocate(Rbuf)
-   end subroutine ignition_doubledelta   
+   end subroutine ignition_doubledelta
+
+
+   !> Initialize PP spectrum for velocity
+   subroutine ignition_spectrum(Lbu,Ut,le,ld,epsilon)
+      use precision
+      use param,    only: param_read
+      use random,   only: random_normal, random_uniform
+      use messager, only: die
+      use, intrinsic :: iso_c_binding
+      implicit none
+
+      ! Buffer region lenght
+      real(WP), intent(in) :: Lbu
+
+      ! Turbulent velocity
+      real(WP) :: Ut
+
+      ! Spectrum type
+      real(WP) :: le,ld,epsilon
+
+      ! Spectrum computation
+      real(WP) :: psr,ps1,ps2,ke,kd,dk,kc,kk,kx,ky,kz,kk2
+      real(WP) :: alpha,spec_amp,eps,amp_disc,e_total,energy_spec
+      complex(WP), dimension(:,:,:), pointer :: ak,bk
+      integer  :: nk ! Cutoff wave number
+
+      ! Complex buffer
+      complex(WP), dimension(:,:,:), pointer :: Cbuf
+
+      ! Real buffer
+      real(WP),    dimension(:,:,:), pointer :: Rbuf
+
+      ! Other
+      integer :: i,j,k,ik,iunit,dim
+      integer :: imin,imax,jmin,jmax,kmin,kmax,nx,ny,nz
+      complex(WP) :: ii=(0.0_WP,1.0_WP)
+      real(WP) :: rand,pi
+
+      ! Fourier coefficients
+      integer(KIND=8) :: plan_r2c,plan_c2r
+      complex(WP), dimension(:,:,:), pointer :: Uk,Vk!,Wk
+
+      include 'fftw3.f03'
+
+      ! Create pi
+      pi=acos(-1.0_WP)
+
+      ! Find the x bounds of the region to be initialized
+      imin=fs%cfg%imin
+      do i=fs%cfg%imin,fs%cfg%imax
+         if (fs%cfg%xm(i).gt.fs%cfg%x(fs%cfg%imin)+Lbu) then
+            imin=i
+            exit
+         end if
+      end do
+      imax=fs%cfg%imax
+      do i=fs%cfg%imax,fs%cfg%imin,-1
+         if (fs%cfg%xm(i).lt.fs%cfg%x(fs%cfg%imax+1)-Lbu) then
+            imax=i
+            exit
+         end if
+      end do
+
+      ! Find the y bounds of the region to be initialized
+      jmin=fs%cfg%jmin
+      do j=fs%cfg%jmin,fs%cfg%jmax
+         if (fs%cfg%ym(j).gt.fs%cfg%y(fs%cfg%jmin)+Lbu) then
+            jmin=j
+            exit
+         end if
+      end do
+      jmax=fs%cfg%jmax
+      do j=fs%cfg%jmax,fs%cfg%jmin,-1
+         if (fs%cfg%ym(j).lt.fs%cfg%y(fs%cfg%jmax+1)-Lbu) then
+            jmax=j
+            exit
+         end if
+      end do
+
+      ! Find the z bounds of the region to be initialized
+      kmin=fs%cfg%kmin
+      do k=fs%cfg%kmin,fs%cfg%kmax
+         if (fs%cfg%zm(k).gt.fs%cfg%z(fs%cfg%kmin)+Lbu) then
+            kmin=k
+            exit
+         end if
+      end do
+      kmax=fs%cfg%kmax
+      do k=fs%cfg%kmax,fs%cfg%kmin,-1
+         if (fs%cfg%zm(k).lt.fs%cfg%z(fs%cfg%kmax+1)-Lbu) then
+            kmax=k
+            exit
+         end if
+      end do
+
+      ! Number of cells iniside the initialization region
+      nx=imax-imin+1
+      ny=jmax-jmin+1
+      nz=kmax-kmin+1
+      nk=nx/2+1
+
+      ! Spectrum computation
+      ke=2.0_WP*pi/le
+      dk=2.0_WP*pi/(Lx-2.0_WP*Lbu)
+      kc=real(nx/2,WP)*dk
+
+      eps=ke/1000000.0_WP
+      spec_amp=(32.0_WP/3.0_WP)*sqrt(2.0_WP/pi)*Ut**2/ke
+      amp_disc=sqrt(dk)**3
+
+      ! Compute spectrum
+      allocate(ak(nk,ny,nz),bk(nk,ny,nz))
+      do k=1,nz
+         do j=1,ny
+            do i=1,nk
+               ! Random numbers
+               call random_number(rand)
+               psr=2.0_WP*pi*(rand-0.5_WP)
+               call random_number(rand)
+               ps1=2.0_WP*pi*(rand-0.5_WP)
+               call random_number(rand)
+               ps2=2.0_WP*pi*(rand-0.5_WP)
+               ! Wavenumbers
+               kx=real(i-1,WP)*dk
+               ky=real(j-1,WP)*dk
+               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
+               kz=real(k-1,WP)*dk
+               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
+               kk=sqrt(kx**2+ky**2+kz**2)
+               ! Spectrums
+               energy_spec=spec_amp*(kk/ke)**4*exp(-2.0_WP*(kk/ke)**2)
+               ! Coeff
+               ak(i,j,k)=0.0_WP
+               bk(i,j,k)=0.0_WP
+               if ((kk.gt.eps).and.(kk.le.kc)) then
+                  ak(i,j,k)=dk*sqrt(energy_spec/(1.0_WP*pi*kk**1))*exp(ii*ps1)
+               end if
+            end do
+         end do
+      end do
+
+      ! Compute 3D field
+      allocate(Uk(nk,ny,nz))
+      allocate(Vk(nk,ny,nz))
+      ! allocate(Wk(nk,ny,nz))
+      Uk=(0.0_WP,0.0_WP)
+      Vk=(0.0_WP,0.0_WP)
+      ! Wk=(0.0_WP,0.0_WP)
+
+      ! Compute the Fourier coefficients
+      do k=1,nz
+         do j=1,ny
+            do i=1,nk
+               ! Wavenumbers
+               kx=real(i-1,WP)*dk
+               ky=real(j-1,WP)*dk
+               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
+               kz=real(k-1,WP)*dk
+               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
+               kk =sqrt(kx**2+ky**2+kz**2)
+               kk2=sqrt(kx**2+ky**2)
+
+               if ((kk.gt.eps).and.(kk.le.kc)) then
+                  if (kk2.lt.eps) then
+                     Uk(i,j,k)=(ak(i,j,k)+bk(i,j,k))/sqrt(2.0_WP)
+                     Vk(i,j,k)=(bk(i,j,k)-ak(i,j,k))/sqrt(2.0_WP)
+                  else
+                     Uk(i,j,k)=(ak(i,j,k)*kk*ky+bk(i,j,k)*kx*kz)/(kk*kk2)
+                     Vk(i,j,k)=(bk(i,j,k)*ky*kz-ak(i,j,k)*kk*kx)/(kk*kk2)
+                  end if
+               end if
+            end do
+         end do
+      end do
+
+      ! Oddball
+      do j=nk+1,ny
+         Uk(1,j,1)=conjg(Uk(1,ny+2-j,1))
+         Vk(1,j,1)=conjg(Vk(1,ny+2-j,1))
+      end do
+
+      ! Inverse Fourier transform
+      allocate(Cbuf(nk,ny,nz))
+      allocate(Rbuf(nx,ny,nz))
+      call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf,FFTW_ESTIMATE)
+      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf,FFTW_ESTIMATE)
+
+      ! Set zero in the buffer region
+      tmp_U=0.0_WP
+      tmp_V=0.0_WP
+      ! tmp_W=0.0_WP
+
+      ! Execute the plans
+      Cbuf=Uk
+      call dfftw_execute(plan_c2r)
+      tmp_U(imin:imax,jmin:jmax,kmin:kmax)=Rbuf
+      Cbuf=Vk
+      call dfftw_execute(plan_c2r)
+      tmp_V(imin:imax,jmin:jmax,kmin:kmax)=Rbuf
+      ! Cbuf=Wk
+      ! call dfftw_execute(plan_c2r)
+      ! tmp_W(imin:imax,jmin:jmax,kmin:kmax)=Rbuf
+
+      ! Clean up
+      deallocate(Uk)
+      deallocate(Vk)
+      ! deallocate(Wk)
+      deallocate(ak)
+      deallocate(bk)
+   end subroutine ignition_spectrum
 
 
    !> Initialization of problem solver
    subroutine simulation_init
       use param, only: param_read
       implicit none
-            
+
       ! Read in the EOS info
       call param_read('rho0',rho0)
       call param_read('rho1',rho1)
@@ -406,8 +616,8 @@ contains
          ! Setup the solver
          call fs%setup(pressure_solver=ps,implicit_solver=vs)
       end block create_velocity_solver
-      
-      
+
+
       ! Create a scalar solver
       create_scalar: block
          use vdscalar_class, only: dirichlet,neumann,quick
@@ -427,8 +637,8 @@ contains
          ! Setup the solver
          call sc%setup(implicit_solver=ss)
       end block create_scalar
-      
-      
+
+
       ! Allocate work arrays
       allocate_work_arrays: block
          ! Flow solver
@@ -444,9 +654,12 @@ contains
          allocate(resSC (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
          ! Temporary scalar field for initialization
          allocate(tmp_sc(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
+         ! Temporary velocity field for initialization
+         allocate(tmp_U(fs%cfg%imin:fs%cfg%imax,fs%cfg%jmin:fs%cfg%jmax,fs%cfg%kmin:fs%cfg%kmax))
+         allocate(tmp_V(fs%cfg%imin:fs%cfg%imax,fs%cfg%jmin:fs%cfg%jmax,fs%cfg%kmin:fs%cfg%kmax))
       end block allocate_work_arrays
-      
-      
+
+
       ! Initialize time tracker with 2 subiterations
       initialize_timetracker: block
          time=timetracker(amRoot=fs%cfg%amRoot)
@@ -456,8 +669,8 @@ contains
          time%dt=time%dtmax
          time%itmax=2
       end block initialize_timetracker
-      
-      
+
+
       ! Initialize our mixture fraction field
       initialize_scalar: block
          use vdscalar_class, only: bcond
@@ -477,15 +690,33 @@ contains
          ! Compute density
          call get_rho()
       end block initialize_scalar
-      
+
 
       ! Initialize our velocity field
       initialize_velocity: block
          use lowmach_class, only: bcond
-         integer :: n,i,j,k
+         use parallel,      only: MPI_REAL_WP
+         integer :: n,i,j,k,ierr
          type(bcond), pointer :: mybc
-         ! Zero initial field
-         fs%U=0.0_WP; fs%V=0.0_WP; fs%W=0.0_WP
+         ! Velocity fluctuation, length scales, epsilon
+         real(WP) :: Ut,le,ld, epsilon
+         ! Read in the inputs
+         call param_read('Velocity fluctuation',Ut)
+         call param_read('Energetic scale',le)
+         call param_read('Dissipative scale',ld)
+         call param_read('Dissipation',epsilon)
+         ! Initialize the global velocity field
+         if (fs%cfg%amRoot) call ignition_spectrum(L_buffer,1.0_WP,le,ld,epsilon)
+         ! Communicate information
+         call MPI_BCAST(tmp_U,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
+         call MPI_BCAST(tmp_V,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
+         ! Set the local velocity field
+         fs%U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
+         fs%V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
+         fs%W=0.0_WP
+         ! Release memory
+         deallocate(tmp_U)
+         deallocate(tmp_V)
          ! Set density from scalar
          fs%rho=sc%rho
          ! Form momentum
@@ -498,8 +729,8 @@ contains
          ! Compute MFR through all boundary conditions
          call fs%get_mfr()
       end block initialize_velocity
-      
-      
+
+
       ! Add Ensight output
       create_ensight: block
          ! Create Ensight output from cfg
@@ -516,8 +747,8 @@ contains
          ! Output to ensight
          if (ens_evt%occurs()) call ens_out%write_data(time%t)
       end block create_ensight
-      
-      
+
+
       ! Create a monitor file
       create_monitor: block
          ! Prepare some info about fields
@@ -563,60 +794,60 @@ contains
          call consfile%add_column(sc%rhoSCint,'rhoSC integral')
          call consfile%write()
       end block create_monitor
-      
-      
+
+
    end subroutine simulation_init
-   
-   
+
+
    !> Perform an NGA2 simulation
    subroutine simulation_run
       implicit none
-      
+
       ! Perform time integration
       do while (.not.time%done())
-         
+
          ! Increment time
          call fs%get_cfl(time%dt,time%cfl)
          call time%adjust_dt()
          call time%increment()
-         
+
          ! Remember old scalar
          sc%rhoold=sc%rho
          sc%SCold =sc%SC
-         
+
          ! Remember old velocity and momentum
          fs%rhoold=fs%rho
          fs%Uold=fs%U; fs%rhoUold=fs%rhoU
          fs%Vold=fs%V; fs%rhoVold=fs%rhoV
          fs%Wold=fs%W; fs%rhoWold=fs%rhoW
-         
+
          ! Apply time-varying Dirichlet conditions
          ! This is where time-dpt Dirichlet would be enforced
-         
+
          ! Perform sub-iterations
          do while (time%it.le.time%itmax)
-            
+
             ! ============= SCALAR SOLVER =======================
             ! Build mid-time scalar
             sc%SC=0.5_WP*(sc%SC+sc%SCold)
-            
+
             ! Explicit calculation of drhoSC/dt from scalar equation
             call sc%get_drhoSCdt(resSC,fs%rhoU,fs%rhoV,fs%rhoW)
-            
+
             ! Assemble explicit residual
             resSC=time%dt*resSC-(2.0_WP*sc%rho*sc%SC-(sc%rho+sc%rhoold)*sc%SCold)
-            
+
             ! Form implicit residual
             call sc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
-            
+
             ! Re-apply Dirichlet BCs
             sc%SC=2.0_WP*sc%SC-sc%SCold+resSC
-            
+
             ! Apply all other boundary conditions on the resulting field
             call sc%apply_bcond(time%t,time%dt)
 
             ! ===================================================
-            
+
             ! ============ UPDATE PROPERTIES ====================
             ! Backup rhoSC
             !resSC=sc%rho*sc%SC
@@ -627,39 +858,39 @@ contains
             ! UPDATE THE VISCOSITY
             ! UPDATE THE DIFFUSIVITY
             ! ===================================================
-            
+
             ! ============ VELOCITY SOLVER ======================
-            
+
             ! Build n+1 density
             fs%rho=0.5_WP*(sc%rho+sc%rhoold)
-            
+
             ! Build mid-time velocity and momentum
             fs%U=0.5_WP*(fs%U+fs%Uold); fs%rhoU=0.5_WP*(fs%rhoU+fs%rhoUold)
             fs%V=0.5_WP*(fs%V+fs%Vold); fs%rhoV=0.5_WP*(fs%rhoV+fs%rhoVold)
             fs%W=0.5_WP*(fs%W+fs%Wold); fs%rhoW=0.5_WP*(fs%rhoW+fs%rhoWold)
-            
+
             ! Explicit calculation of drho*u/dt from NS
             call fs%get_dmomdt(resU,resV,resW)
-            
+
             ! Assemble explicit residual
             resU=time%dtmid*resU-(2.0_WP*fs%rhoU-2.0_WP*fs%rhoUold)
             resV=time%dtmid*resV-(2.0_WP*fs%rhoV-2.0_WP*fs%rhoVold)
             resW=time%dtmid*resW-(2.0_WP*fs%rhoW-2.0_WP*fs%rhoWold)
-            
+
             ! Form implicit residuals
             call fs%solve_implicit(time%dtmid,resU,resV,resW)
-            
+
             ! Apply these residuals
             fs%U=2.0_WP*fs%U-fs%Uold+resU
             fs%V=2.0_WP*fs%V-fs%Vold+resV
             fs%W=2.0_WP*fs%W-fs%Wold+resW
-            
+
             ! Apply other boundary conditions and update momentum
             call fs%apply_bcond(time%tmid,time%dtmid)
             call fs%rho_multiply()
             call fs%apply_bcond(time%tmid,time%dtmid)
-            
-               
+
+
             ! Solve Poisson equation
             call sc%get_drhodt(dt=time%dt,drhodt=resSC)
             call fs%correct_mfr(drhodt=resSC)
@@ -668,7 +899,7 @@ contains
             fs%psolv%sol=0.0_WP
             call fs%psolv%solve()
             call fs%shift_p(fs%psolv%sol)
-            
+
             ! Correct momentum and rebuild velocity
             call fs%get_pgrad(fs%psolv%sol,resU,resV,resW)
             fs%P=fs%P+fs%psolv%sol
@@ -677,20 +908,20 @@ contains
             fs%rhoW=fs%rhoW-time%dtmid*resW
             call fs%rho_divide
             ! ===================================================
-            
+
             ! Increment sub-iteration counter
             time%it=time%it+1
-            
+
          end do
-         
+
          ! Recompute interpolated velocity and divergence
          call fs%interp_vel(Ui,Vi,Wi)
          call sc%get_drhodt(dt=time%dt,drhodt=resSC)
          call fs%get_div(drhodt=resSC)
-         
+
          ! Output to ensight
          if (ens_evt%occurs()) call ens_out%write_data(time%t)
-         
+
          ! Perform and output monitoring
          call fs%get_max()
          call sc%get_max()
@@ -698,26 +929,26 @@ contains
          call mfile%write()
          call cflfile%write()
          call consfile%write()
-         
+
       end do
-      
+
    end subroutine simulation_run
-   
-   
+
+
    !> Finalize the NGA2 simulation
    subroutine simulation_final
       implicit none
-      
+
       ! Get rid of all objects - need destructors
       ! monitor
       ! ensight
       ! bcond
       ! timetracker
-      
+
       ! Deallocate work arrays
       deallocate(resSC,resU,resV,resW,Ui,Vi,Wi)
-      
+
    end subroutine simulation_final
-   
-   
+
+
 end module simulation
