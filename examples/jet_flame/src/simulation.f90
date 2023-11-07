@@ -19,10 +19,10 @@ module simulation
    type(hypre_str),   public :: ps
    type(ddadi),       public :: vs,ss
    type(lowmach),     public :: fs
-   type(vdscalar),    public :: sc
+   type(vdscalar),    public :: sc    
    type(timetracker), public :: time
-   type(sgsmodel),    public :: sgs
-   type(flamelet),    public :: flm   !< Flamelet model
+   type(sgsmodel),    public :: sgs   !> SGS model
+   type(flamelet),    public :: flm   !> Flamelet model
 
    !> Ensight postprocessing
    type(ensight) :: ens_out
@@ -52,9 +52,10 @@ module simulation
    real(WP) :: rho_min,rho_max
    real(WP), dimension(:,:,:), allocatable :: drho
    real(WP), dimension(:,:,:), allocatable :: ZgradMagSq
+   real(WP), dimension(:,:,:), allocatable :: Y_OH
 
    !> Turbulence
-   ! real(WP) :: SchmidtSGS
+   real(WP) :: SchmidtSGS
 
 contains
 
@@ -216,6 +217,7 @@ contains
          ! Sync drho
          call sc%cfg%sync(drho)
       end do
+
    end subroutine filter_drho
 
 
@@ -293,7 +295,7 @@ contains
       ! Create a SGS model
       create_sgs: block
          sgs=sgsmodel(cfg=fs%cfg,umask=fs%umask,vmask=fs%vmask,wmask=fs%wmask)
-         ! call param_read('SGS Schmidt number',SchmidtSGS)
+         call param_read('SGS Schmidt number',SchmidtSGS)
       end block create_sgs
 
 
@@ -311,6 +313,7 @@ contains
          ! Combustion
          allocate(drho      (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_)); drho=0.0_WP
          allocate(ZgradMagSq(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_)); ZgradMagSq=0.0_WP
+         allocate(Y_OH      (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_)); Y_OH=0.0_WP
          ! Turbulence
          allocate(gradU(1:3,1:3,cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_))
       end block allocate_work_arrays
@@ -349,9 +352,10 @@ contains
 
 
       initialize_combustion: block
+         ! Number of cells
          ncells=cfg%nxo_*cfg%nyo_*cfg%nzo_
          ! Lookup viscosity
-         call flm%chmtbl%lookup('mu',fs%visc,sc%SC,flm%Zvar,flm%chi,ncells)
+         call flm%chmtbl%lookup('viscosity',fs%visc,sc%SC,flm%Zvar,flm%chi,ncells)
          ! Lookup diffusivity
          call flm%chmtbl%lookup('diffusivity',sc%diff,sc%SC,flm%Zvar,flm%chi,ncells)
          ! Mixture fraction gradient
@@ -410,10 +414,9 @@ contains
          call ens_out%add_scalar('divergence',fs%div)
          call ens_out%add_scalar('density',sc%rho)
          call ens_out%add_scalar('mixfrac',sc%SC)
-         call ens_out%add_scalar('viscosity',fs%visc)
-         call ens_out%add_scalar('diffusivity',sc%diff)
          call ens_out%add_scalar('chi',flm%chi)
          call ens_out%add_scalar('Zvar',flm%Zvar)
+         call ens_out%add_scalar('Y_OH',Y_OH)
          ! Output to ensight
          if (ens_evt%occurs()) call ens_out%write_data(time%t)
       end block create_ensight
@@ -496,7 +499,7 @@ contains
          ! This is where time-dpt Dirichlet would be enforced
 
          ! Lookup viscosity
-         call flm%chmtbl%lookup('mu',fs%visc,sc%SC,flm%Zvar,flm%chi,ncells)
+         call flm%chmtbl%lookup('viscosity',fs%visc,sc%SC,flm%Zvar,flm%chi,ncells)
          ! Lookup diffusivity
          call flm%chmtbl%lookup('diffusivity',sc%diff,sc%SC,flm%Zvar,flm%chi,ncells)
          ! Mixture fraction gradient
@@ -507,14 +510,14 @@ contains
          call flm%compute_chi(mueff=fs%visc,rho=sc%rho,ZgradMagSq=ZgradMagSq)
          
          ! Turbulence modeling
-         ! sgs_modeling: block
-         !    use sgsmodel_class, only: vreman
-         !    resU=fs%rho
-         !    call fs%get_gradu(gradU)
-         !    call sgs%get_visc(type=vreman,dt=time%dtold,rho=resU,gradu=gradU)
-         !    fs%visc=fs%visc+sgs%visc
-         !    sc%diff=sc%diff+sgs%visc/SchmidtSGS
-         ! end block sgs_modeling
+         sgs_modeling: block
+            use sgsmodel_class, only: vreman
+            resU=fs%rho
+            call fs%get_gradu(gradU)
+            call sgs%get_visc(type=vreman,dt=time%dtold,rho=resU,gradu=gradU)
+            fs%visc=fs%visc+sgs%visc
+            sc%diff=sc%diff+sgs%visc/SchmidtSGS
+         end block sgs_modeling
 
          ! Perform sub-iterations
          do while (time%it.le.time%itmax)
@@ -651,6 +654,9 @@ contains
          call sc%get_drhodt(dt=time%dt,drhodt=resSC)
          call fs%get_div(drhodt=resSC)
 
+         ! Combustion post-process
+         call flm%chmtbl%lookup('Y_OH',Y_OH,sc%SC,flm%Zvar,flm%chi,ncells)
+
          ! Output to ensight
          if (ens_evt%occurs()) call ens_out%write_data(time%t)
 
@@ -678,7 +684,7 @@ contains
       ! timetracker
 
       ! Deallocate work arrays
-      deallocate(resSC,resU,resV,resW,Ui,Vi,Wi,drho,ZgradMagSq)
+      deallocate(resSC,resU,resV,resW,Ui,Vi,Wi,drho,gradU,ZgradMagSq)
 
    end subroutine simulation_final
 

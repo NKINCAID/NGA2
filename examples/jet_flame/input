@@ -12,28 +12,28 @@ nz : 1
 # Inflow definition
 Z jet    : 1
 D jet    : 1
-U jet    : 0.01 # 1
+U jet    : 0.2
 Z coflow : 0.2
 D coflow : 3
-U coflow : 0.002 # 0.2
+U coflow : 0.04
 
 # Combustion
 Chemtable file name : chemtable
-Filtering levels    : 0
-Density limiter     : false
+Filtering levels    : 1
+Density limiter     : true
 
 # Turbulence
-#SGS Schmidt number  : 1
+SGS Schmidt number  : 1
 
 # Time integration
-Max timestep size :	1.5 # 1e-2
-Max cfl number    :	0.8 # 0.6
+Max timestep size :	0.05
+Max cfl number    :	0.8
 Sub iterations    : 3
-Max time          : 300
+Max time          : 10
 
 # Pressure solver
 Pressure tolerance : 1e-6
 Pressure iteration : 50
 
 # Ensight output
-Ensight output period : 20 # 1.5e-2
+Ensight output period : 1

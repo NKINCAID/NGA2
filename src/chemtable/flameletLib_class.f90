@@ -10,7 +10,7 @@ module flameletLib_class
    public :: flameletLib,modify_varname
 
    ! List of known available flamelet models
-   integer, parameter, public :: sfm=1                       !< Steady Flamelet Model (SFM)
+   integer, parameter, public :: sfm=1       !< Steady Flamelet Model (SFM)
 
    !> Flamelet library object definition
    type :: flameletLib
@@ -73,11 +73,12 @@ contains
          call die('[flameletlib constructor] Unknown combustion model')
       end select
 
-      ! Make the mass fraction names compatible with FlameMaster files
+      ! Make the mass fraction names and viscosity compatible with FlameMaster files
       do var=1,self%nvar_in
          call modify_varname(self%input_name(var),'Y_','massfraction-')
          call modify_varname(self%input_name(var),'Y-','massfraction-')
          call modify_varname(self%input_name(var),'massfraction_','massfraction-')
+         call modify_varname(self%input_name(var),'viscosity','mu')
       end do
 
       ! Allocate array to specify wether the variables have been found
@@ -100,10 +101,10 @@ contains
          call die("[flameletLib readfile] Error opening the file : " // trim(this%files(ifile)))
       end if
 
-      nlines = 0
-      this%found = .false.
-      ierr = 0
-      buffer = ''
+      nlines=0
+      this%found=.false.
+      ierr=0
+      buffer=''
       do while(index(buffer,'body').eq.0)
 
          ! First get some parameters
@@ -128,7 +129,7 @@ contains
       loop0: do var=1,this%nvar_in
          if (trim(this%input_name(var)).eq.'diffusivity') exit loop0
       end do loop0
-      if (var.le.this%nvar_in) this%input_data(:,var) = 1.0_WP
+      if (var.le.this%nvar_in) this%input_data(:,var)=1.0_WP
 
       loop1:do while (ierr.eq.0)
 
@@ -142,7 +143,7 @@ contains
          if (index1.ne.0) varname(index1:)=''
 
          ! Read the array
-         line = ''
+         line=''
          do n=1,nlines
             read(iunit,'(a)',iostat=ierr) buffer
             line=trim(line)//adjustl(trim(buffer))
@@ -179,7 +180,7 @@ contains
          loop3:do var=1,this%nvar_in
             if (trim(this%input_name(var)).eq.varname) then
                read(line,*) this%input_data(:,var)
-               this%found(var) = .true.
+               this%found(var)=.true.
                exit loop3
             end if
          end do loop3

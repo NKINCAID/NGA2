@@ -37,9 +37,6 @@ module diffusionTable_class
       ! Variable after convolution
       real(WP), dimension(:,:,:,:), pointer :: postconv
 
-      ! Name conversion
-      ! character(len=str_medium), dimension(:), allocatable :: conversion
-
       ! Binary file name of the table
       character(len=str_medium) :: filename
 
@@ -79,9 +76,8 @@ contains
       call param_read('Number of points for third direction',self%n3)
       if (self%n3.lt.self%flmlib%nfiles) print*,'WARNING: No. points for the third direction is less than the number of flamelet files'
 
+      ! Stoichiometric mixture fraction
       call param_read('Stoichiometric mixture fraction',self%Zst)
-
-      ! call param_read('Name conversion',self%conversion)
 
       ! Default name as in FlameMaster
       self%nvar_out=self%flmlib%nvar_in
@@ -171,15 +167,15 @@ contains
       else
          ! Linear or log progression
          select case(trim(this%Z3_scale))
-         case ('lin')
+          case ('lin')
             do i3=1,this%n3
                this%Z3(i3)=min3+real(i3-1,WP)*(max3-min3)/real(this%n3-1,WP)
             end do
-         case ('log')
+          case ('log')
             do i3=1,this%n3
                this%Z3(i3)=min3*(max3/min3)**(real(i3-1,WP)/real(this%n3-1,WP))
             end do
-         case default
+          case default
             call die("[create_Z3] Unknown Scale for third direction")
          end select
       end if
@@ -288,32 +284,34 @@ contains
    end subroutine convolute
 
    subroutine convert_names(this)
-      use flameletLib_class, only:modify_varname
+      use flameletLib_class, only: modify_varname
+      use param,             only: param_getsize,param_read
       implicit none
       class(diffusionTable), intent(inout) :: this
       character(len=str_medium) :: varname
+      character(len=str_medium), dimension(:), allocatable :: conversion
       integer :: i,n,var
 
-      ! ! Get the number of name conversions
-      !    call parser_getsize('Name conversion',n)
-      !    if (mod(n,3).ne.0) stop "diffusion_table_convert_names: Problem in the definition of conversion names"
+      ! Get the number of name conversions
+      n=param_getsize('Name conversion')
+      if (mod(n,3).ne.0) call die("diffusion_table_convert_names: Problem in the definition of conversion names")
 
-      !    Allocate array and read
-      !    allocate(conversion(n))
-      !    call parser_read('Name conversion',conversion)
+      ! Allocate array and read
+      allocate(conversion(n))
+      call param_read('Name conversion',conversion)
 
-      ! ! Convert the names
-      ! n = n / 3
-      ! do i=1,n
-      !    varname = trim(this%conversion((i-1)*3+3))
-      !    loop1:do var=1,this%flmlib%nvar_in
-      !       if (trim(this%flmlib%input_name(var)).eq.trim(varname)) exit loop1
-      !    end do loop1
-      !    if (var.eq.this%flmlib%nvar_in+1) then
-      !       call die("[diffusionTable convert_names] Unknown variable name : " // varname)
-      !    end if
-      !    this%output_name(var) = trim(this%conversion((i-1)*3+1))
-      ! end do
+      ! Convert the names
+      n=n/3
+      do i=1,n
+         varname=trim(conversion((i-1)*3+3))
+         loop1:do var=1,this%flmlib%nvar_in
+            if (trim(this%flmlib%input_name(var)).eq.trim(varname)) exit loop1
+         end do loop1
+         if (var.eq.this%flmlib%nvar_in+1) then
+            call die("[diffusionTable convert_names] Unknown variable name : " // varname)
+         end if
+         this%output_name(var)=trim(conversion((i-1)*3+1))
+      end do
 
       ! Modify the mass fraction names
       do var=1,this%nvar_out
@@ -335,7 +333,7 @@ contains
          file=minloc(maxval(maxval(this%postconv(this%flmlib%nvar_in,:,:,:),dim=1),dim=1),dim=1)
          print*,''
          print*,'Flamelet #',file,'used as chi=0 flamelet'
-         this%postconv(this%flmlib%nvar_in,:,:,file) = 0.0_WP
+         this%postconv(this%flmlib%nvar_in,:,:,file)=0.0_WP
       end if
 
       ! Allocate final table
