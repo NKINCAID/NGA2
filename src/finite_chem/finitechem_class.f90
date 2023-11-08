@@ -36,28 +36,31 @@ module finitechem_class
     type, extends(multivdscalar) :: finitechem
         real(WP) :: vol                  !< Volume
         real(WP) :: m                    !< Mass
-        real(WP) :: h                    !< Enthalpy
-        real(WP) :: T                    !< Temperature
-        real(WP) :: Zmix                 !< Mixture fraction
-        real(WP), dimension(nspec) :: Y   !< Composition
+        real(WP), dimension(:, :, :), pointer :: T                    !< Temperature
+        real(WP), dimension(:, :, :, :), pointer :: Y   !< Composition
 
         real(WP) :: Pthermo, Pthermo_old     !< Thermodynamic pressure
 
         real(WP), dimension(:, :, :), allocatable :: visc     !< Viscosity field
+        real(WP), dimension(:, :, :, :), allocatable :: SRCchem     !< Viscosity field
+        real(WP), dimension(:, :, :), allocatable :: h                    !< Enthalpy
 
         real(WP), dimension(:, :, :), allocatable :: lambda     !< Thermal conductivity
         real(WP), dimension(:, :, :), allocatable :: cp     !< Heat capacity
 
         logical :: use_explicit_try = .false.
 
+        real(WP) :: visc_min, visc_max                      !< Min and max polymer viscosity
+
     contains
         ! procedure :: react
 
-        ! procedure :: get_density
+        procedure :: get_density
         procedure :: get_viscosity
         procedure :: get_diffusivity
         procedure :: get_cpmix
         procedure :: get_Wmix
+        procedure :: get_enthalpy
 
         ! procedure :: get_Wmix
         ! procedure :: get_sv
@@ -67,7 +70,7 @@ module finitechem_class
 
         procedure :: clip
 
-        procedure :: test
+        procedure :: get_max => fc_get_max                   !< Augment multiscalar's default monitoring
     end type finitechem
 
     !> Declare fc model constructor
@@ -86,6 +89,7 @@ contains
         character(len=*), optional :: name
         character(len=str_medium), dimension(nspec) :: names
         integer :: i
+
         ! Create a six-scalar solver for conformation tensor
         self%multivdscalar = multivdscalar(cfg=cfg, scheme=scheme, nscalar=nspec + 1, name=name)
         call fcmech_get_speciesnames(names)
@@ -94,18 +98,16 @@ contains
         end do
         self%SCname(nspec + 1) = "T"
 
+        allocate (self%visc(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%visc = 0.0_WP
+        allocate (self%lambda(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%lambda = 0.0_WP
+        allocate (self%cp(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%cp = 0.0_WP
+        allocate (self%h(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%h = 0.0_WP
+ allocate (self%SRCchem(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_, nspec+1)); self%SRCchem = 0.0_WP
+
+        self%Y => self%SC(:, :, :, 1:nspec)
+        self%T => self%SC(:, :, :, nspec1)
+
     end function constructor
-
-    subroutine test(this, Wmix)
-        implicit none
-        class(finitechem), intent(inout) :: this
-        real(WP), intent(out) :: Wmix
-        real(WP), dimension(nspec) :: scalar_t
-
-        print *, nspec
-
-        return
-    end subroutine test
 
     subroutine clip(this, myY)
         implicit none
@@ -153,11 +155,11 @@ contains
                         ! Package initial solution vector
                         sol(1:nspec) = this%SC(i, j, k, 1:nspec)
                         sol(nspec1) = this%SC(i, j, k, nspec1)
+                        call this%clip(sol(1:nspec))
                         ! Advance the chemical equations for each particle
                         call fc_reaction_compute_sol(sol, this%pthermo, dt)
-                        ! Transfer back to particle structure
-                        this%SC(i, j, k, 1:nspec) = sol(1:nspec)
-                        this%SC(i, j, k, nspec1) = sol(nspec1)
+
+                        this%SRCchem(i, j, k, :) = sol - this%SC(i, j, k, :)
 
                     end do
                 end do
@@ -437,7 +439,7 @@ contains
                     else
                         Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
                         Ys = this%SC(i, j, k, 1:nspec)
-                        call fcsubs_Wmix(Ys, Wmix)
+                        call this%get_Wmix(Ys, Wmix)
                         this%rho(i, j, k) = this%Pthermo*Wmix/(Rcst*Tmix)
                     end if
                 end do
@@ -488,7 +490,7 @@ contains
                     this%visc(i, j, k) = 0.0_WP
                     do sc1 = 1, nspec
                         if (this%SC(i, j, k, 1 + sc1 - 1) .le. 0.0_WP) cycle
-                        buf = sum(this%SC(i, j, k, 1:1 + nspec - 1)*phi(sc1, :)/W_sp)
+                        buf = sum(this%SC(i, j, k, 1:nspec)*phi(sc1, :)/W_sp)
                         this%visc(i, j, k) = this%visc(i, j, k) + this%SC(i, j, k, 1 + sc1 - 1)*eta(sc1)/(W_sp(sc1)*buf)
                     end do
 
@@ -521,7 +523,7 @@ contains
 
                     ! ---- Thermal diffusivity ---- !
                     ! Mixture molar mass and temperature
-                    Ys = this%SC(i, j, k, 1:1 + nspec - 1)
+                    Ys = this%SC(i, j, k, 1:nspec)
                     call this%get_Wmix(Ys, Wmix)
                     Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
 
@@ -566,7 +568,7 @@ contains
                         else
                             ! Diffusion is ill defined
                             sumDiff = sum(invDij(n, :)/W_sp)
-                            this%diff(i, j, k, n) = (real(nspec - 1, WP))/(Wmix*sumDiff)
+                            this%diff(i, j, k, n) = (real(nspec, WP))/(Wmix*sumDiff)
                         end if
                         this%diff(i, j, k, n) = this%rho(i, j, k)*this%diff(i, j, k, n)
                     end do
@@ -595,6 +597,26 @@ contains
         return
     end subroutine get_cpmix
 
+    ! ================================================ !
+    subroutine get_enthalpy(this)
+        implicit none
+
+        integer :: i, j, k, n
+        class(finitechem), intent(inout) :: this
+
+        do k = this%cfg%kmino_, this%cfg%kmaxo_
+            do j = this%cfg%jmino_, this%cfg%jmaxo_
+                do i = this%cfg%imino_, this%cfg%imaxo_
+                    call fcmech_thermodata(this%T(i, j, k))
+                    do n = 1, nspec
+                        this%h(i, j, k) = this%h(i, j, k) + hsp(n)*this%rho(i, j, k)*this%Y(i, j, k, n)
+                    end do
+                end do
+            end do
+        end do
+
+        return
+    end subroutine get_enthalpy
 ! ========================================== !
 ! Compute average molecular weight (kg/kmol) !
 ! ========================================== !
@@ -611,4 +633,22 @@ contains
 
         return
     end subroutine get_Wmix
+
+    !> Calculate the min and max of our SC field
+    subroutine fc_get_max(this)
+        use mpi_f08, only: MPI_ALLREDUCE, MPI_MAX, MPI_MIN
+        use parallel, only: MPI_REAL_WP
+        implicit none
+        class(finitechem), intent(inout) :: this
+        integer :: ierr, nsc
+        real(WP) :: my_visc_max, my_visc_min, my_rhomax, my_rhomin
+
+        my_visc_max = maxval(this%visc); call MPI_ALLREDUCE(my_visc_max, this%visc_max, 1, MPI_REAL_WP, MPI_MAX, this%cfg%comm, ierr)
+        my_visc_min = minval(this%visc); call MPI_ALLREDUCE(my_visc_min, this%visc_min, 1, MPI_REAL_WP, MPI_MIN, this%cfg%comm, ierr)
+
+        my_rhomax = maxval(this%rho(:, :, :)); call MPI_ALLREDUCE(my_rhomax, this%rhomax, 1, MPI_REAL_WP, MPI_MAX, this%cfg%comm, ierr)
+        my_rhomin = minval(this%rho(:, :, :)); call MPI_ALLREDUCE(my_rhomin, this%rhomin, 1, MPI_REAL_WP, MPI_MIN, this%cfg%comm, ierr)
+
+    end subroutine fc_get_max
+
 end module finitechem_class
