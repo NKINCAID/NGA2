@@ -133,175 +133,6 @@ contains
         if (j .eq. pg%jmin - 1) isIn = .true.
     end function ym_scalar
 
-    !> Function that localizes y+ boundary
-    ! function yp_scalar(pg, i, j, k) result(isIn)
-    !     use pgrid_class, only: pgrid
-    !     class(pgrid), intent(in) :: pg
-    !     integer, intent(in) :: i, j, k
-    !     logical :: isIn
-    !     isIn = .false.
-    !     if (j .eq. pg%jmax) isIn = .true.
-    ! end function yp_scalar
-
-    !> Initialize a double delta field
-    subroutine ignition_doubledelta()
-        use precision
-        use param, only: param_read
-        use random, only: random_normal, random_uniform
-        use messager, only: die
-        use, intrinsic :: iso_c_binding
-        implicit none
-        ! Buffer region lenght
-        ! real(WP), intent(in) :: L_buffer
-        real(WP) :: pi, ke, dk, kc, ks, ksk0ratio, kcksratio, kx, ky, kz, kk, f_phi, kk2
-        ! Complex buffer
-        complex(WP), dimension(:, :, :), pointer :: Cbuf
-        ! Real buffer
-        real(WP), dimension(:, :, :), pointer :: Rbuf
-        ! Scalar buffer
-        real(WP)  :: tmp_mean, tmp_rms
-        ! Spectrum computation
-        real(WP) :: alpha, spec_amp, eps, amp_disc, e_total, energy_spec
-        real(WP), dimension(:, :), pointer :: spect
-        complex(WP), dimension(:, :, :), pointer :: ak, bk
-        ! Other
-        integer     :: i, j, k, ik, iunit, dim, nk
-        complex(WP) :: ii = (0.0_WP, 1.0_WP)
-        real(WP)    :: rand
-        ! Fourier coefficients
-        integer(KIND=8) :: plan_r2c, plan_c2r
-        complex(WP), dimension(:, :, :), pointer :: Uk, Vk, Wk
-
-        include 'fftw3.f03'
-
-        ! Create pi
-        pi = acos(-1.0_WP)
-
-        ! Step size for wave number
-        dk = 2.0_WP*pi/(Lx - 2.0_WP*L_buffer)
-
-        ! Number of cells iniside the initialization region
-        nk = nx/2 + 1
-
-        ! Initialize in similar manner to Eswaran and Pope 1988
-        call param_read('ks/ko', ksk0ratio)
-        ks = ksk0ratio*dk
-        call param_read('kc/ks', kcksratio)
-        kc = kcksratio*ks
-        ! Allocate Cbuf and Rbuf
-        allocate (Cbuf(nk, ny, nz))
-        allocate (Rbuf(nx, ny, nz))
-
-        ! Compute the Fourier coefficients
-        do k = 1, nz
-            do j = 1, ny
-                do i = 1, nk
-                    ! Wavenumbers
-                    kx = real(i - 1, WP)*dk
-                    ky = real(j - 1, WP)*dk
-                    if (j .gt. nk) ky = -real(nx + 1 - j, WP)*dk
-                    kz = real(k - 1, WP)*dk
-                    if (k .gt. nk) kz = -real(nx + 1 - k, WP)*dk
-                    kk = sqrt(kx**2 + ky**2 + kz**2)
-                    kk2 = sqrt(kx**2 + ky**2)
-
-                    ! Compute the Fourier coefficients
-                    if ((ks - dk/2.0_WP .le. kk) .and. (kk .le. ks + dk/2.0_WP)) then
-                        f_phi = 1.0_WP
-                    else
-                        f_phi = 0.0_WP
-                    end if
-                    call random_number(rand)
-                    if (kk .lt. 1e-10) then
-                        Cbuf(i, j, k) = 0.0_WP
-                    else
-                        Cbuf(i, j, k) = sqrt(f_phi/(4.0_WP*pi*kk**2))*exp(ii*2.0_WP*pi*rand)
-                    end if
-                end do
-            end do
-        end do
-
-        ! Oddball and setting up plans based on geometry
-        do j = nk + 1, ny
-            Cbuf(1, j, 1) = conjg(Cbuf(1, ny + 2 - j, 1))
-        end do
-        call dfftw_plan_dft_c2r_2d(plan_c2r, nx, ny, Cbuf, Rbuf, FFTW_ESTIMATE)
-        call dfftw_plan_dft_r2c_2d(plan_r2c, nx, ny, Rbuf, Cbuf, FFTW_ESTIMATE)
-
-        ! Inverse Fourier transform
-        call dfftw_execute(plan_c2r)
-
-        ! Force 'double-delta' pdf on scalar field
-        do k = 1, nz
-            do j = 1, ny
-                do i = 1, nx
-                    if (Rbuf(i, j, k) .le. 0.0_WP) then
-                        Rbuf(i, j, k) = 0.0_WP
-                    else
-                        Rbuf(i, j, k) = 1.0_WP
-                    end if
-                end do
-            end do
-        end do
-
-        ! Fourier Transform and filter to smooth
-        call dfftw_execute(plan_r2c)
-
-        do k = 1, nz
-            do j = 1, ny
-                do i = 1, nk
-                    ! Wavenumbers
-                    kx = real(i - 1, WP)*dk
-                    ky = real(j - 1, WP)*dk
-                    if (j .gt. nk) ky = -real(nx + 1 - j, WP)*dk
-                    kz = real(k - 1, WP)*dk
-                    if (k .gt. nk) kz = -real(nx + 1 - k, WP)*dk
-                    kk = sqrt(kx**2 + ky**2 + kz**2)
-                    kk2 = sqrt(kx**2 + ky**2)
-
-                    ! Filter to remove high wavenumber components
-                    if (kk .le. kc) then
-                        Cbuf(i, j, k) = Cbuf(i, j, k)*1.0_WP
-                    else
-                        Cbuf(i, j, k) = Cbuf(i, j, k)*(kc/kk)**2
-                    end if
-                end do
-            end do
-        end do
-
-        ! Oddball
-        do j = nk + 1, ny
-            Cbuf(1, j, 1) = conjg(Cbuf(1, ny + 2 - j, 1))
-        end do
-
-        ! Fourier Transform back to real
-        call dfftw_execute(plan_c2r)
-
-        ! Set zero in the buffer region
-        tmp_sc = 0.0_WP
-        ! Set the internal scalar field
-        tmp_sc(imin:imax, jmin:jmax, kmin:kmax) = Rbuf/real(nx*ny*nz, WP)
-
-        tmp_sc_min = minval(tmp_sc)
-        tmp_sc_max = maxval(tmp_sc)
-
-        do k = kmin, kmax
-            do j = jmin, jmax
-                do i = imin, imax
-                    tmp_sc(i, j, 1) = (tmp_sc(i, j, 1) - tmp_sc_min)/(tmp_sc_max - tmp_sc_min)*0.6_WP + 0.7_WP
-                end do
-            end do
-        end do
-
-        ! Destroy the plans
-        call dfftw_destroy_plan(plan_c2r)
-        call dfftw_destroy_plan(plan_r2c)
-
-        ! Clean up
-        deallocate (Cbuf)
-        deallocate (Rbuf)
-    end subroutine ignition_doubledelta
-
     !> Initialization of problem solver
     subroutine simulation_init
         use param, only: param_read
@@ -310,18 +141,18 @@ contains
         ! Create a low-Mach flow solver with bconds
         create_velocity_solver: block
             use hypre_str_class, only: pcg_pfmg
-            use lowmach_class, only: dirichlet, clipped_neumann, slip, neumann
+            use lowmach_class, only: dirichlet, neumann, clipped_neumann, slip
             real(WP) :: visc
             ! Create flow solver
             fs = lowmach(cfg=cfg, name='Variable density low Mach NS')
             ! Assign constant viscosity
             ! call param_read('Dynamic viscosity', visc); fs%visc = visc
             ! Use slip on the sides with correction
-            call fs%add_bcond(name='ym_outflow', type=neumann, face='y', dir=-1, canCorrect=.True., locator=ym_locator)
-            call fs%add_bcond(name='yp_outflow', type=neumann, face='y', dir=+1, canCorrect=.True., locator=yp_locator)
+            call fs%add_bcond(name='ym_outflow', type=neumann, face='y', dir=-1, canCorrect=.False., locator=ym_locator)
+            call fs%add_bcond(name='yp_outflow', type=neumann, face='y', dir=+1, canCorrect=.False., locator=yp_locator)
             ! Outflow on the right
-            call fs%add_bcond(name='xm_outflow', type=neumann, face='x', dir=-1, canCorrect=.True., locator=xm_locator)
-            call fs%add_bcond(name='xp_outflow', type=neumann, face='x', dir=+1, canCorrect=.True., locator=xp_locator)
+            call fs%add_bcond(name='xm_outflow', type=neumann, face='x', dir=-1, canCorrect=.False., locator=xm_locator)
+            call fs%add_bcond(name='xp_outflow', type=neumann, face='x', dir=+1, canCorrect=.False., locator=xp_locator)
             ! ! Configure pressure solver
             ps = hypre_str(cfg=cfg, name='Pressure', method=pcg_pfmg, nst=7)
             ps%maxlevel = 18
@@ -339,11 +170,7 @@ contains
             real(WP) :: diffusivity
             ! Create scalar solver
             fc = finitechem(cfg=cfg, scheme=quick, name='fc')
-            ! Outflow on the right
-            call fc%add_bcond(name='xm_outflow', type=neumann, locator=xm_scalar, dir='-x')
-            call fc%add_bcond(name='xp_outflow', type=neumann, locator=xp_locator, dir='+x')
-            call fc%add_bcond(name='ym_outflow', type=neumann, locator=ym_scalar, dir='-y')
-            call fc%add_bcond(name='yp_outflow', type=neumann, locator=yp_locator, dir='+y')
+
             ! Assign constant diffusivity
             ! call param_read('Dynamic diffusivity', diffusivity)
             ! fc%diff = diffusivity
@@ -405,63 +232,6 @@ contains
             ! Read in the buffer region length
             call param_read('Buffer region length', L_buffer)
 
-            ! Find the x bounds of the region to be initialized
-            imin = fc%cfg%imin
-            do i = fc%cfg%imin, fc%cfg%imax
-                if (fc%cfg%xm(i) .gt. fc%cfg%x(fc%cfg%imin) + L_buffer) then
-                    imin = i
-                    exit
-                end if
-            end do
-            imax = fc%cfg%imax
-            do i = fc%cfg%imax, fc%cfg%imin, -1
-                if (fc%cfg%xm(i) .lt. fc%cfg%x(fc%cfg%imax + 1) - L_buffer) then
-                    imax = i
-                    exit
-                end if
-            end do
-
-            ! Find the y bounds of the region to be initialized
-            jmin = fc%cfg%jmin
-            do j = fc%cfg%jmin, fc%cfg%jmax
-                if (fc%cfg%ym(j) .gt. fc%cfg%y(fc%cfg%jmin) + L_buffer) then
-                    jmin = j
-                    exit
-                end if
-            end do
-            jmax = fc%cfg%jmax
-            do j = fc%cfg%jmax, fc%cfg%jmin, -1
-                if (fc%cfg%ym(j) .lt. fc%cfg%y(fc%cfg%jmax + 1) - L_buffer) then
-                    jmax = j
-                    exit
-                end if
-            end do
-
-            ! Find the z bounds of the region to be initialized
-            kmin = fc%cfg%kmin
-            do k = fc%cfg%kmin, fc%cfg%kmax
-                if (fc%cfg%zm(k) .gt. fc%cfg%z(fc%cfg%kmin) + L_buffer) then
-                    kmin = k
-                    exit
-                end if
-            end do
-            kmax = fc%cfg%kmax
-            do k = fc%cfg%kmax, fc%cfg%kmin, -1
-                if (fc%cfg%zm(k) .lt. fc%cfg%z(fc%cfg%kmax + 1) - L_buffer) then
-                    kmax = k
-                    exit
-                end if
-            end do
-            nx = imax - imin + 1
-            ny = jmax - jmin + 1
-            nz = kmax - kmin + 1
-
-            ! Initialize the global scalar field
-            if (fc%cfg%amRoot) call ignition_doubledelta()
-
-            ! Communicate information
-            call MPI_BCAST(tmp_sc, fc%cfg%nx*fc%cfg%ny*fc%cfg%nz, MPI_REAL_WP, 0, fc%cfg%comm, ierr)
-
             do i = 1, nspec
                 if (fc%SCname(i) .eq. fuel) then
                     isc_fuel = i
@@ -474,27 +244,23 @@ contains
             end do
 
             isc_T = nspec + 1
-            ! tmp_sc = 1.0_WP
+            tmp_sc = 1.0_WP
             do k = fc%cfg%kmino_, fc%cfg%kmaxo_
                 do j = fc%cfg%jmino_, fc%cfg%jmaxo_
                     do i = fc%cfg%imino_, fc%cfg%imaxo_
-                     if (i .ge. imin .and. i .le. imax .and. j .ge. jmin .and. j .le. jmax .and. k .ge. kmin .and. k .le. kmax) then
-                            ! Set mass fraction of fuel
-                            fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
-                                                       (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                        (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                            ! Set mass fraction of O2
-                            fc%SC(i, j, k, isc_o2) = W_sp(isc_o2)/ &
-                                                     (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                      (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                            ! Set mass fraction of N2
-                            fc%SC(i, j, k, isc_n2) = 3.76_WP*W_sp(isc_n2)/ &
-                                                     (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                      (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                        ! Set mass fraction of fuel
+                        fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
+                                                   (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                                    (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                        ! Set mass fraction of O2
+                        fc%SC(i, j, k, isc_o2) = W_sp(isc_o2)/ &
+                                                 (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                                  (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                        ! Set mass fraction of N2
+                        fc%SC(i, j, k, isc_n2) = 3.76_WP*W_sp(isc_n2)/ &
+                                                 (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                                  (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
 
-                        else
-                            fc%SC(i, j, k, isc_n2) = 1.0_WP
-                        end if
                         fc%SC(i, j, k, isc_T) = T_init
                     end do
                 end do
@@ -651,7 +417,6 @@ contains
             ! This is where time-dpt Dirichlet would be enforced
             ! t1 = parallel_time()
             call fc%react(time%dt)
-            call fc%diffusive_source(time%dt)
             ! t2 = parallel_time()
             ! Perform sub-iterations
             do while (time%it .le. time%itmax)

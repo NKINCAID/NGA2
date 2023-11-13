@@ -7,6 +7,7 @@ module multivdscalar_class
     use config_class, only: config
     use linsol_class, only: linsol
     use iterator_class, only: iterator
+    use parallel, only: parallel_time
     implicit none
     private
 
@@ -551,12 +552,15 @@ allocate (this%itp_z(-1:0, this%cfg%imin_:this%cfg%imax_ + 1, this%cfg%jmin_:thi
         real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in)  :: rhoW        !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
         integer :: i, j, k, nsc
         real(WP), dimension(:, :, :), allocatable :: FX, FY, FZ
+        real(WP) :: t1, t2
         ! Zero out drhoSC/dt array
         drhoSCdt = 0.0_WP
         ! Allocate flux arrays
         allocate (FX(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
         allocate (FY(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
         allocate (FZ(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+
+        ! t1 = parallel_time()
 
         ! Work on each scalar
         do nsc = 1, this%nscalar
@@ -594,6 +598,11 @@ allocate (this%itp_z(-1:0, this%cfg%imin_:this%cfg%imax_ + 1, this%cfg%jmin_:thi
         end do
         ! Deallocate flux arrays
         deallocate (FX, FY, FZ)
+        ! t2 = parallel_time()
+        ! print *, "---------------------------------------------"
+        ! print *, "INSIDE MULTIVDSCALAR"
+        ! print *, "drhoscdt : ", t2 - t1
+        ! print *, "---------------------------------------------"
 
     end subroutine get_drhoSCdt
 
@@ -691,7 +700,9 @@ allocate (this%itp_z(-1:0, this%cfg%imin_:this%cfg%imax_ + 1, this%cfg%jmin_:thi
         real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in)    :: rhoV  !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
         real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in)    :: rhoW  !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
         integer :: i, j, k, sti, std, nsc
+        real(WP) :: t1, t2, t3, t4
 
+        ! t1 = parallel_time()
         ! Apply implicit treatment for each scalar
         do nsc = 1, this%nscalar
             ! Prepare convective operator
@@ -754,7 +765,13 @@ allocate (this%itp_z(-1:0, this%cfg%imin_:this%cfg%imax_ + 1, this%cfg%jmin_:thi
 
             ! Sync up residual
             call this%cfg%sync(resSC(:, :, :, nsc))
+
         end do
+
+        ! t2 = parallel_time()
+        ! print *, "solve_implicit : ", t2 - t1
+        ! print *, "---------------------------------------------"
+
     end subroutine solve_implicit
 
     !> Print out info for multivdscalar solver

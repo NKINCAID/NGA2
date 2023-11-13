@@ -11,8 +11,8 @@ import numpy as np
 
 
 # mech = mechanisms.Mechanism("C1skeletal.cti")
-# mech = mechanisms.Mechanism("fake.cti")
-mech = mechanisms.Mechanism("YAO_reduced.cti")
+mech = mechanisms.Mechanism("fake.cti")
+# mech = mechanisms.Mechanism("YAO_reduced.cti")
 
 
 custom.print_fortran(mech, "fcmech.f90", routine_name="fcmech", use="NGA")

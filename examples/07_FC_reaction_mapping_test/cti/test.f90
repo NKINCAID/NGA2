@@ -1,12 +1,12 @@
 !--------------------------------------------------------------------------------------------------
 !     Copyright (c) CERFACS (all rights reserved)
 !--------------------------------------------------------------------------------------------------
-!     FILE fcmech.f90
-!>    @file fcmech.f90
+!     FILE test.f90
+!>    @file test.f90
 !!    Module for calculating the analytical source terms in NGA
 !!    @details 
 !!    @authors 
-!!    @date    2023/11/10
+!!    @date    2023/11/03
 !!    @since   
 !!    @note    
 !--------------------------------------------------------------------------------------------------
@@ -4930,51 +4930,6 @@ module fcmech
   
 contains
 
-  ! ================================================ !
-  ! Compute omegamu needed for transport calculation !
-  ! ================================================ !
-  real(WP) function fcmech_omegamu(T_)
-    implicit none
-    real(WP), intent(in) :: T_
-    real(WP), parameter, dimension(9) :: mArray = (/&
-         3.3530622607_WP, 2.53272006_WP, 2.9024238575_WP, &
-         0.11186138893_WP,0.8662326188_WP, 1.3913958626_WP, &
-         3.158490576_WP, 0.18973411754_WP, 0.00018682962894_WP/)
-    integer :: arrIndex
-    real(WP) :: omegamu_Nr, omegamu_Dr
-    omegamu_Dr = mArray(9)
-    do arrIndex = 1,4 
-        omegamu_Dr = mArray(9-arrIndex) + T_*omegamu_Dr
-    end do
-    omegamu_Nr = mArray(4)
-    do arrIndex = 1,3 
-        omegamu_Nr = mArray(4-arrIndex) + T_*omegamu_Nr
-    end do
-    fcmech_omegamu=omegamu_Nr/omegamu_Dr
-  end function fcmech_omegamu
-
-  ! =============================================== !
-  ! Compute omegaD needed for transport calculation !
-  ! =============================================== !
-  real(WP) function fcmech_omegaD(T_)
-    implicit none
-    real(WP), intent(in) :: T_
-    real(WP), parameter, dimension(9) :: mArray = (/ &
-         6.8728271691_WP, 9.4122316321_WP, 7.7442359037_WP, &
-         0.23424661229_WP,1.45337701568_WP, 5.2269794238_WP, &
-         9.7108519575_WP, 0.46539437353_WP, 0.00041908394781_WP/)
-    integer :: arrIndex
-    real(WP) :: omegaD_Nr, omegaD_Dr
-    omegaD_Dr = mArray(9)
-    do arrIndex = 1,4
-        omegaD_Dr = mArray(9-arrIndex) + T_*omegaD_Dr
-    end do
-    omegaD_Nr = mArray(4)
-    do arrIndex = 1,3
-        omegaD_Nr = mArray(4-arrIndex) + T_*omegaD_Nr
-    end do
-    fcmech_omegaD=omegaD_Nr/omegaD_Dr
-  end function fcmech_omegaD
   ! ----------------------------------------------- !
   ! Subroutine for pressure dependent coefficients  !
   ! ----------------------------------------------- !
@@ -5417,7 +5372,7 @@ contains
     k(r5f) = getlindratecoeff(Tloc, k_0(FOr5f), k_inf(FOr5f),FC(FOr5f), M(mM5),Ploc)
     k_0(FOr6f) =(6.328000e+07_WP)*exp((-1.400000e+00_WP)*T_log )
     k_inf(FOr6f) =(5.116000e+06_WP)*exp((4.400000e-01_WP)*T_log )
-    FC(FOr6f) = ((1.0_WP - 5.000000e-01_WP)*exp(-Tloc/(1.000000e-30_WP)) + (5.000000e-01_WP)*exp(-Tloc/(1.000000e+30_WP)))
+    FC(FOr6f) = ((1.0_WP - 5.000000e-01_WP)*exp(-Tloc/(0.000000e+00_WP)) + (5.000000e-01_WP)*exp(-Tloc/(1.000000e+30_WP)))
     k(r6f) = getlindratecoeff(Tloc, k_0(FOr6f), k_inf(FOr6f),FC(FOr6f), M(mM6),Ploc)
     k(r7f) = (9.756000e+07_WP)*exp((-6.210002e+04_WP)*R_T_inv )
     k(r8f) = (4.000000e+07_WP)
@@ -5632,7 +5587,7 @@ contains
     k(r5b) = getlindratecoeff(Tloc, k_0(FOr5b), k_inf(FOr5b),FC(FOr5b), M(mM5),Ploc)
     k_0(FOr6b) =(2.713340e+13_WP)*exp((-2.033759e+05_WP)*R_T_inv + (-1.262132e+00_WP)*T_log )
     k_inf(FOr6b) =(2.193655e+12_WP)*exp((-2.033759e+05_WP)*R_T_inv + (5.778675e-01_WP)*T_log )
-    FC(FOr6b) = ((1.0_WP - 5.000000e-01_WP)*exp(-Tloc/(1.000000e-30_WP)) + (5.000000e-01_WP)*exp(-Tloc/(1.000000e+30_WP)))
+    FC(FOr6b) = ((1.0_WP - 5.000000e-01_WP)*exp(-Tloc/(0.000000e+00_WP)) + (5.000000e-01_WP)*exp(-Tloc/(1.000000e+30_WP)))
     k(r6b) = getlindratecoeff(Tloc, k_0(FOr6b), k_inf(FOr6b),FC(FOr6b), M(mM6),Ploc)
     k(r7b) = (4.282559e+05_WP)*exp((7.949259e+03_WP)*R_T_inv + (3.368428e-01_WP)*T_log )
     k(r12b) = (4.253452e+07_WP)*exp((-2.891487e+05_WP)*R_T_inv + (2.818537e-01_WP)*T_log )

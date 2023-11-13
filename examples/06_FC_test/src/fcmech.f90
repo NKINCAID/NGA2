@@ -6,7 +6,7 @@
 !!    Module for calculating the analytical source terms in NGA
 !!    @details 
 !!    @authors 
-!!    @date    2023/11/03
+!!    @date    2023/11/10
 !!    @since   
 !!    @note    
 !--------------------------------------------------------------------------------------------------
@@ -5417,7 +5417,7 @@ contains
     k(r5f) = getlindratecoeff(Tloc, k_0(FOr5f), k_inf(FOr5f),FC(FOr5f), M(mM5),Ploc)
     k_0(FOr6f) =(6.328000e+07_WP)*exp((-1.400000e+00_WP)*T_log )
     k_inf(FOr6f) =(5.116000e+06_WP)*exp((4.400000e-01_WP)*T_log )
-    FC(FOr6f) = ((1.0_WP - 5.000000e-01_WP)*exp(-Tloc/(0.000000e+00_WP)) + (5.000000e-01_WP)*exp(-Tloc/(1.000000e+30_WP)))
+    FC(FOr6f) = ((1.0_WP - 5.000000e-01_WP)*exp(-Tloc/(1.000000e-30_WP)) + (5.000000e-01_WP)*exp(-Tloc/(1.000000e+30_WP)))
     k(r6f) = getlindratecoeff(Tloc, k_0(FOr6f), k_inf(FOr6f),FC(FOr6f), M(mM6),Ploc)
     k(r7f) = (9.756000e+07_WP)*exp((-6.210002e+04_WP)*R_T_inv )
     k(r8f) = (4.000000e+07_WP)
@@ -5632,7 +5632,7 @@ contains
     k(r5b) = getlindratecoeff(Tloc, k_0(FOr5b), k_inf(FOr5b),FC(FOr5b), M(mM5),Ploc)
     k_0(FOr6b) =(2.713340e+13_WP)*exp((-2.033759e+05_WP)*R_T_inv + (-1.262132e+00_WP)*T_log )
     k_inf(FOr6b) =(2.193655e+12_WP)*exp((-2.033759e+05_WP)*R_T_inv + (5.778675e-01_WP)*T_log )
-    FC(FOr6b) = ((1.0_WP - 5.000000e-01_WP)*exp(-Tloc/(0.000000e+00_WP)) + (5.000000e-01_WP)*exp(-Tloc/(1.000000e+30_WP)))
+    FC(FOr6b) = ((1.0_WP - 5.000000e-01_WP)*exp(-Tloc/(1.000000e-30_WP)) + (5.000000e-01_WP)*exp(-Tloc/(1.000000e+30_WP)))
     k(r6b) = getlindratecoeff(Tloc, k_0(FOr6b), k_inf(FOr6b),FC(FOr6b), M(mM6),Ploc)
     k(r7b) = (4.282559e+05_WP)*exp((7.949259e+03_WP)*R_T_inv + (3.368428e-01_WP)*T_log )
     k(r12b) = (4.253452e+07_WP)*exp((-2.891487e+05_WP)*R_T_inv + (2.818537e-01_WP)*T_log )

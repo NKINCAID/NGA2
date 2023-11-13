@@ -6,6 +6,7 @@ module finitechem_class
     use dvode_f90_m
     use precision, only: WP
     use fcmech
+    use parallel, only: parallel_time
     implicit none
     private
 
@@ -31,6 +32,7 @@ module finitechem_class
     logical :: use_scheduler = .false.
 
     logical :: use_lewis = .false.
+    real(WP) :: t1, t2, t3, t4, t5, t6
 
     !> Finite chemistry solver object definition
     type, extends(multivdscalar) :: finitechem
@@ -42,12 +44,14 @@ module finitechem_class
         real(WP) :: Pthermo, Pthermo_old     !< Thermodynamic pressure
 
         real(WP), dimension(:, :, :), allocatable :: visc     !< Viscosity field
+        real(WP), dimension(:, :, :), allocatable :: sumY     !< Viscosity field
         real(WP), dimension(:, :, :, :), allocatable :: SRCchem     !< Viscosity field
         real(WP), dimension(:, :, :), allocatable :: h                    !< Enthalpy
 
         real(WP), dimension(:, :, :), allocatable :: lambda     !< Thermal conductivity
         real(WP), dimension(:, :, :), allocatable :: cp     !< Heat capacity
 
+        real(WP), dimension(:, :, :, :), allocatable :: grdsc_xm, grdsc_ym, grdsc_zm         !< Scalar gradient for SC at centers
         logical :: use_explicit_try = .false.
 
         real(WP) :: visc_min, visc_max                      !< Min and max polymer viscosity
@@ -67,6 +71,7 @@ module finitechem_class
         ! procedure :: get_thermodata
         ! procedure :: H2T
         procedure :: react
+        procedure :: diffusive_source
 
         procedure :: clip
 
@@ -88,7 +93,7 @@ contains
         integer, intent(in) :: scheme
         character(len=*), optional :: name
         character(len=str_medium), dimension(nspec) :: names
-        integer :: i
+        integer :: i, j, k
 
         ! Create a six-scalar solver for conformation tensor
         self%multivdscalar = multivdscalar(cfg=cfg, scheme=scheme, nscalar=nspec + 1, name=name)
@@ -99,10 +104,26 @@ contains
         self%SCname(nspec + 1) = "T"
 
         allocate (self%visc(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%visc = 0.0_WP
+        allocate (self%sumY(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%sumY = 0.0_WP
         allocate (self%lambda(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%lambda = 0.0_WP
         allocate (self%cp(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%cp = 0.0_WP
         allocate (self%h(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%h = 0.0_WP
  allocate (self%SRCchem(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_, nspec+1)); self%SRCchem = 0.0_WP
+
+        ! Allocate finite difference velocity gradient operators
+   allocate (self%grdsc_xm(0:+1, self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_))
+   allocate (self%grdsc_ym(0:+1, self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_))
+   allocate (self%grdsc_zm(0:+1, self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_))
+        ! Create gradient coefficients to cell faces
+        do k = self%cfg%kmin_, self%cfg%kmax_ + 1
+            do j = self%cfg%jmin_, self%cfg%jmax_ + 1
+                do i = self%cfg%imin_, self%cfg%imax_ + 1
+                    self%grdsc_xm(:, i, j, k) = self%cfg%dxi(i)*[-1.0_WP, +1.0_WP] !< FD gradient of SC in x from [xm,ym,zm] to [x,ym,zm]
+                    self%grdsc_ym(:, i, j, k) = self%cfg%dyi(j)*[-1.0_WP, +1.0_WP] !< FD gradient of SC in y from [xm,ym,zm] to [xm,y,zm]
+                    self%grdsc_zm(:, i, j, k) = self%cfg%dzi(k)*[-1.0_WP, +1.0_WP] !< FD gradient of SC in z from [xm,ym,zm] to [xm,ym,z]
+                end do
+            end do
+        end do
 
         self%Y => self%SC(:, :, :, 1:nspec)
         self%T => self%SC(:, :, :, nspec1)
@@ -127,7 +148,7 @@ contains
         real(WP), intent(in) :: dt  !< Timestep size over which to advance
 
         integer :: i, j, k, myi
-        real(WP), dimension(nspec + 1) :: sol
+        real(WP), dimension(nspec + 1) :: sol, solold
 
         ! Local scheduler variables
         integer :: ndata
@@ -145,21 +166,36 @@ contains
         integer, dimension(:), pointer :: iDI
         ! Temp variables to update particle properties
         real(WP) :: rbuf, myw, mysv, myh
+        CHARACTER(LEN=30) :: Format
 
+        this%SRCchem = 0.0_WP
         ! If only one processor, or if beginning of simulation, just do the work for all particles
         if (.not. use_scheduler .or. this%cfg%nproc .eq. 1) then
 
             do k = this%cfg%kmino_, this%cfg%kmaxo_
                 do j = this%cfg%jmino_, this%cfg%jmaxo_
                     do i = this%cfg%imino_, this%cfg%imaxo_
-                        ! Package initial solution vector
-                        sol(1:nspec) = this%SC(i, j, k, 1:nspec)
-                        sol(nspec1) = this%SC(i, j, k, nspec1)
-                        call this%clip(sol(1:nspec))
+                        sol(1:nspec) = min(max(this%SC(i, j, k, 1:nspec), 0.0_WP), 1.0_WP)
+                        sol(1:nspec) = sol(1:nspec)/sum(sol(1:nspec))
+                        sol(nspec1) = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
+
+                        solold = sol
+                        if (solold(sN2) .gt. 0.8_WP) cycle                        ! Package initial solution vector
+
+                        ! call this%clip(sol(1:nspec))
                         ! Advance the chemical equations for each particle
                         call fc_reaction_compute_sol(sol, this%pthermo, dt)
 
-                        this%SRCchem(i, j, k, :) = sol - this%SC(i, j, k, :)
+                        this%SRCchem(i, j, k, :) = sol - solold
+
+!                         if (i .eq. 64 .and. j .eq. 64 .and. k .eq. 1) then
+!                             write (unit=*, fmt='(A10,A14, A14, A14)') " ", "Old", "New", "Delta"
+!                     write (unit=*, fmt='(A10,F14.2,F14.2,ES14.2)') "Temp", solold(nspec1), sol(nspec1), sol(nspec1) - solold(nspec1)
+!                             write (unit=*, fmt='(A10,ES14.3,ES14.3,ES14.3)') "O2", solold(sO2), sol(sO2), sol(sO2) - solold(sO2)
+!                            write (unit=*, fmt='(A10,ES14.3,ES14.3,ES14.3)') "HO2", solold(sHO2), sol(sHO2), sol(sHO2) - solold(sHO2)
+!   write (unit=*, fmt='(A10,ES14.3,ES14.3,ES14.3)') "NXC12H26", solold(sNXC12H26), sol(sNXC12H26), sol(sNXC12H26) - solold(sNXC12H26)
+!   write (unit=*, fmt='(A10,ES14.3,ES14.3,ES14.3)') "SXC12H25", solold(sSXC12H25), sol(sSXC12H25), sol(sSXC12H25) - solold(sSXC12H25)
+!                         end if
 
                     end do
                 end do
@@ -210,9 +246,9 @@ contains
             else
                 ! Integrate using DVODE
                 if (use_jacanal) then
-
-                opts = set_opts(dense_j=.true., mxstep=500000, abserr=atol, relerr=rtol, tcrit=tstop, user_supplied_jacobian=.true.)
-             call dvode_f90(fc_reaction_compute_rhs, nspec1, sol, tstart, tstop, itask, istate, opts, j_fcn=fc_reaction_compute_jac)
+                    continue
+                    ! opts = set_opts(dense_j=.true., mxstep=500000, abserr=atol, relerr=rtol, tcrit=tstop, user_supplied_jacobian=.true.)
+                    !  call dvode_f90(fc_reaction_compute_rhs, nspec1, sol, tstart, tstop, itask, istate, opts, j_fcn=fc_reaction_compute_jac)
 
                 else
 
@@ -267,25 +303,21 @@ contains
 
             ! Reset rhs
             rhs = 0.0_WP
+            M = 0.0_WP
 
             ! Get W of mixture
             call this%get_Wmix(sol(1:nspec), Wmix)
 
             ! Get Cp of mixture and update hsp
             call this%get_cpmix(sol(1:nspec), sol(nspec1), Cp_mix)
-
             ! Get RHO of mixture
             RHOmix = this%Pthermo*Wmix/(Rcst*sol(nspec1))
 
             ! Calculate concentrations of unsteady species
             c = RHOmix*sol(1:nspec)/W_sp(1:nspec)
-
-            call get_thirdbodies(M, c)
-
+            ! call get_thirdbodies(M, c)
             call get_rate_coefficients(k, M, sol(nspec1), this%Pthermo)
-
             call get_reaction_rates(w, k, M, c)
-
             call get_production_rates(rhs, w)
 
             ! Transform concentration into mass fraction
@@ -311,47 +343,47 @@ contains
             return
         end subroutine fc_reaction_thermodata
 
-        ! ---------------------------------------------------------------------------------- !
-        ! ========================================================== !
-        ! Computes the approximate analytical jacobian of the system !
-        ! ========================================================== !
-        subroutine fc_reaction_compute_jac(n_, t_, sol, ml, mu, jac, nrpd)
-            implicit none
+        ! ! ---------------------------------------------------------------------------------- !
+        ! ! ========================================================== !
+        ! ! Computes the approximate analytical jacobian of the system !
+        ! ! ========================================================== !
+        ! subroutine fc_reaction_compute_jac(n_, t_, sol, ml, mu, jac, nrpd)
+        !     implicit none
 
-            ! ! Input
-            integer :: n_, ml, mu, nrpd
-            real(WP) :: t_
-            real(WP), dimension(n_) :: sol
-            real(WP), dimension(nrpd, n_) :: jac
+        !     ! ! Input
+        !     integer :: n_, ml, mu, nrpd
+        !     real(WP) :: t_
+        !     real(WP), dimension(n_) :: sol
+        !     real(WP), dimension(nrpd, n_) :: jac
 
-            ! Local variables
-            real(WP) :: Cp_mix, Wmix, RHOmix
-            real(WP), dimension(nspec) :: C, Cdot
-            real(WP), dimension(nTB + nFO) :: M
-            real(WP), dimension(nreac + nreac_reverse) :: W, K
+        !     ! Local variables
+        !     real(WP) :: Cp_mix, Wmix, RHOmix
+        !     real(WP), dimension(nspec) :: C, Cdot
+        !     real(WP), dimension(nTB + nFO) :: M
+        !     real(WP), dimension(nreac + nreac_reverse) :: W, K
 
-            ! Get W of mixture
-            call this%get_Wmix(sol(1:nspec), Wmix)
+        !     ! Get W of mixture
+        !     call this%get_Wmix(sol(1:nspec), Wmix)
 
-            ! Get Cp of mixture and update hsp
-            call this%get_cpmix(sol(1:nspec), sol(nspec1), Cp_mix)
+        !     ! Get Cp of mixture and update hsp
+        !     call this%get_cpmix(sol(1:nspec), sol(nspec1), Cp_mix)
 
-            ! Get RHO of mixture
-            RHOmix = this%Pthermo*Wmix/(Rcst*sol(nspec1))
+        !     ! Get RHO of mixture
+        !     RHOmix = this%Pthermo*Wmix/(Rcst*sol(nspec1))
 
-            call get_thirdbodies(M, c)
+        !     call get_thirdbodies(M, c)
 
-            call get_rate_coefficients(k, M, sol(nspec1), this%Pthermo)
+        !     call get_rate_coefficients(k, M, sol(nspec1), this%Pthermo)
 
-            call get_reaction_rates(w, k, M, c)
+        !     call get_reaction_rates(w, k, M, c)
 
-            call get_production_rates(Cdot, w)
+        !     call get_production_rates(Cdot, w)
 
-            ! Get analytical Jacobian from mechanism file
-            ! call fc_reaction_getjacobian(sol(1:nspec), sol(nspec + 1), M, Cdot, K, RHOmix, Cp_mix, Wmix, jac)
+        !     ! Get analytical Jacobian from mechanism file
+        !     ! call fc_reaction_getjacobian(sol(1:nspec), sol(nspec + 1), M, Cdot, K, RHOmix, Cp_mix, Wmix, jac)
 
-            return
-        end subroutine fc_reaction_compute_jac
+        !     return
+        ! end subroutine fc_reaction_compute_jac
 
         ! ------------------------------------------------------------------------------------------------ !
         ! ================================================ !
@@ -462,7 +494,9 @@ contains
         real(WP) :: Tmix, buf
         real(WP), dimension(nspec) :: eta
         real(WP), dimension(nspec, nspec) :: phi
+        real(WP) ::timer1, timer2, timer3, timer4, timer5, t7
 
+        timer1 = 0.0_WP; timer2 = 0.0_WP; timer3 = 0.0_WP; timer4 = 0.0_WP; timer4 = 0.0_WP; timer5 = 0.0_WP; 
         ! Compute the new viscosity from Wilke's method
         do k = this%cfg%kmino_, this%cfg%kmaxo_
             do j = this%cfg%jmino_, this%cfg%jmaxo_
@@ -471,8 +505,12 @@ contains
 
                     ! Pure compounds viscosity
                     Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
+                    ! t1 = parallel_time()
 
                     call fcmech_get_viscosity(eta, Tmix)
+                    ! t2 = parallel_time()
+
+                    ! timer1 = timer1 + t2 - t1
 
                     ! Mixing coefficients
                     do sc2 = 1, nspec
@@ -485,7 +523,8 @@ contains
                             end if
                         end do
                     end do
-
+                    ! t3 = parallel_time()
+                    ! timer2 = timer2 + t3 - t2
                     ! Mixing rule
                     this%visc(i, j, k) = 0.0_WP
                     do sc1 = 1, nspec
@@ -493,10 +532,21 @@ contains
                         buf = sum(this%SC(i, j, k, 1:nspec)*phi(sc1, :)/W_sp)
                         this%visc(i, j, k) = this%visc(i, j, k) + this%SC(i, j, k, 1 + sc1 - 1)*eta(sc1)/(W_sp(sc1)*buf)
                     end do
-
+                    ! t4 = parallel_time()
+                    ! this%visc(i, j, k) = 1.0_WP
+                    ! timer3 = timer3 + t4 - t3
+                    ! this%visc(i, j, k) = 1.0e-5_WP
                 end do
             end do
         end do
+
+        ! print *, "-------------------------------------------"
+        ! print *, "INSIDE GET_VISCOSITY"
+        ! print *, "fcmech_get_viscosity    : ", timer1
+        ! print *, "Mixing coefficient loop : ", timer2
+
+        ! print *, "Mixing rule loop        : ", timer3
+        ! print *, "-------------------------------------------"
 
         return
     end subroutine get_viscosity
@@ -572,7 +622,7 @@ contains
                         end if
                         this%diff(i, j, k, n) = this%rho(i, j, k)*this%diff(i, j, k, n)
                     end do
-
+                    this%diff(i, j, k, :) = 0.0_WP
                 end do
             end do
         end do
@@ -651,4 +701,184 @@ contains
 
     end subroutine fc_get_max
 
+    subroutine diffusive_source(this, dt)
+        implicit none
+        class(finitechem), intent(inout) :: this
+
+        real(WP), dimension(:, :, :), allocatable :: Wmol, Cpmix, tmp10, tmp11, tmp12
+        real(WP), dimension(:, :, :), allocatable :: FX, FY, FZ
+        real(WP), dimension(:, :, :, :), allocatable :: DFX, DFY, DFZ
+        real(WP), intent(in) :: dt  !< Timestep size over which to advance
+        real(WP) :: Tmix, Ttmp, df1, df2, df3
+        real(WP), dimension(nspec) :: Ys, hs, Cps
+
+        integer :: i, j, k, nsc
+
+        ! Allocate flux arrays
+        allocate (FX(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+        allocate (FY(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+        allocate (FZ(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+
+        allocate (DFX(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_, 1:nspec))
+        allocate (DFY(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_, 1:nspec))
+        allocate (DFZ(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_, 1:nspec))
+
+        allocate (Wmol(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+        allocate (Cpmix(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+        allocate (tmp10(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+        allocate (tmp11(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+        allocate (tmp12(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+
+        ! Get Wmol and Cpmix fields
+        do k = this%cfg%kmino_, this%cfg%kmaxo_
+            do j = this%cfg%jmino_, this%cfg%jmaxo_
+                do i = this%cfg%imino_, this%cfg%imaxo_
+                    if (this%mask(i, j, k) .eq. 1) then
+                        Wmol(i, j, k) = 1.0_WP
+                        Cpmix(i, j, k) = 1.0_WP
+                    else
+                        Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
+                        Ys = this%SC(i, j, k, 1:nspec)
+                        call this%get_Wmix(Ys, Wmol(i, j, k))
+                        call this%get_cpmix(Ys, Tmix, Cpmix(i, j, k))
+                    end if
+                end do
+            end do
+        end do
+
+        ! Form species diffusive fluxes
+        do nsc = 1, nspec
+
+            do k = this%cfg%kmin_, this%cfg%kmax_ + 1
+                do j = this%cfg%jmin_, this%cfg%jmax_ + 1
+                    do i = this%cfg%imin_, this%cfg%imax_ + 1
+
+                        ! Molar diffusion correction - DIFF/Wmol*Yi*grad(Wmol)
+                        FX(i, j, k) = sum(this%itp_x(:, i, j, k)*this%diff(i - 1:i, j, k, nsc)/Wmol(i - 1:i, j, k))* &
+                           sum(this%itp_x(:, i, j, k)*this%SC(i - 1:i, j, k, nsc))*sum(this%grdsc_x(:, i, j, k)*Wmol(i - 1:i, j, k))
+
+                        FY(i, j, k) = sum(this%itp_y(:, i, j, k)*this%diff(i, j - 1:j, k, nsc)/Wmol(i, j - 1:j, k))* &
+                           sum(this%itp_y(:, i, j, k)*this%SC(i, j - 1:j, k, nsc))*sum(this%grdsc_y(:, i, j, k)*Wmol(i, j - 1:j, k))
+
+                        FZ(i, j, k) = sum(this%itp_z(:, i, j, k)*this%diff(i, j, k - 1:k, nsc)/Wmol(i, j, k - 1:k))* &
+                           sum(this%itp_z(:, i, j, k)*this%SC(i, j, k - 1:k, nsc))*sum(this%grdsc_z(:, i, j, k)*Wmol(i, j, k - 1:k))
+
+                        ! Store full diffusive flux
+                        DFX(i, j, k, nsc) = FX(i, j, k) + sum(this%itp_x(:, i, j, k)*this%diff(i - 1:i, j, k, nsc))* &
+                                            sum(this%grdsc_x(:, i, j, k)*this%SC(i - 1:i, j, k, nsc))
+
+                        DFY(i, j, k, nsc) = FY(i, j, k) + sum(this%itp_y(:, i, j, k)*this%diff(i, j - 1:j, k, nsc))* &
+                                            sum(this%grdsc_y(:, i, j, k)*this%SC(i, j - 1:j, k, nsc))
+
+                        DFZ(i, j, k, nsc) = FZ(i, j, k) + sum(this%itp_z(:, i, j, k)*this%diff(i, j, k - 1:k, nsc))* &
+                                            sum(this%grdsc_z(:, i, j, k)*this%SC(i, j, k - 1:k, nsc))
+
+                    end do
+                end do
+            end do
+
+            ! Update species source term
+            do k = this%cfg%kmin_, this%cfg%kmax_
+                do j = this%cfg%jmin_, this%cfg%jmax_
+                    do i = this%cfg%imin_, this%cfg%imax_
+                        this%SRCchem(i, j, k, nsc) = this%SRCchem(i, j, k, nsc) + dt*( &
+                                                     sum(this%divsc_x(i, j, k, :)*FX(i:i + 1, j, k)) + &
+                                                     sum(this%divsc_y(i, j, k, :)*FY(i, j:j + 1, k)) + &
+                                                     sum(this%divsc_z(i, j, k, :)*FZ(i, j, k:k + 1)))
+                    end do
+                end do
+            end do
+
+        end do
+
+        ! Correct species diffusion to ensure sum(DFX)=0
+        do k = this%cfg%kmin_, this%cfg%kmax_ + 1
+            do j = this%cfg%jmin_, this%cfg%jmax_ + 1
+                do i = this%cfg%imin_, this%cfg%imax_ + 1
+                    ! sum(DFX)
+                    tmp10(i, j, k) = sum(DFX(i, j, k, :))
+                    tmp11(i, j, k) = sum(DFY(i, j, k, :))
+                    tmp12(i, j, k) = sum(DFZ(i, j, k, :))
+                end do
+            end do
+        end do
+
+        do nsc = 1, nspec
+
+            do k = this%cfg%kmin_, this%cfg%kmax_ + 1
+                do j = this%cfg%jmin_, this%cfg%jmax_ + 1
+                    do i = this%cfg%imin_, this%cfg%imax_ + 1
+
+                        ! Diffusion correction: -Yi*sum(DFX)
+                        FX(i, j, k) = -sum(this%itp_x(:, i, j, k)*this%SC(i, j, k, nsc))*tmp10(i, j, k)
+                        FZ(i, j, k) = -sum(this%itp_y(:, i, j, k)*this%SC(i, j - 1:j, k, nsc))*tmp11(i, j, k)
+                        FY(i, j, k) = -sum(this%itp_z(:, i, j, k)*this%SC(i, j, k - 1:k, nsc))*tmp12(i, j, k)
+
+                        ! Update full diffusive flux
+                        DFX(i, j, k, nsc) = DFX(i, j, k, nsc) + FX(i, j, k)
+                        DFY(i, j, k, nsc) = DFY(i, j, k, nsc) + FY(i, j, k)
+                        DFZ(i, j, k, nsc) = DFZ(i, j, k, nsc) + FZ(i, j, k)
+
+                    end do
+                end do
+            end do
+
+            ! Update species source term
+            do k = this%cfg%kmin_, this%cfg%kmax_
+                do j = this%cfg%jmin_, this%cfg%jmax_
+                    do i = this%cfg%imin_, this%cfg%imax_
+                        this%SRCchem(i, j, k, nsc) = this%SRCchem(i, j, k, nsc) + dt*( &
+                                                     sum(this%divsc_x(i, j, k, :)*FX(i:i + 1, j, k)) + &
+                                                     sum(this%divsc_y(i, j, k, :)*FY(i, j:j + 1, k)) + &
+                                                     sum(this%divsc_z(i, j, k, :)*FZ(i, j, k:k + 1)))
+                    end do
+                end do
+            end do
+
+        end do
+
+        ! Form thermal diffusion correction - lambda/Cp^2*grad(Cpmix).grad(T)
+        do k = this%cfg%kmin_, this%cfg%kmax_
+            do j = this%cfg%jmin_, this%cfg%jmax_
+                do i = this%cfg%imin_, this%cfg%imax_
+                    this%SRCchem(i, j, k, nspec1) = this%SRCchem(i, j, k, nspec1) + dt*this%diff(i, j, k, nspec1)/Cpmix(i, j, k)*( &
+               sum(this%grdsc_xm(:, i, j, k)*Cpmix(i:i + 1, j, k))*sum(this%grdsc_xm(:, i, j, k)*this%SC(i:i + 1, j, k, nspec1)) + &
+               sum(this%grdsc_ym(:, i, j, k)*Cpmix(i, j:j + 1, k))*sum(this%grdsc_ym(:, i, j, k)*this%SC(i, j:j + 1, k, nspec1)) + &
+                  sum(this%grdsc_zm(:, i, j, k)*Cpmix(i, j, k:k + 1))*sum(this%grdsc_zm(:, i, j, k)*this%SC(i, j, k:k + 1, nspec1)))
+                end do
+            end do
+        end do
+
+        ! Update temperature and enthalpy source terms
+        do k = this%cfg%kmin_, this%cfg%kmax_
+            do j = this%cfg%jmin_, this%cfg%jmax_
+                do i = this%cfg%imin_, this%cfg%imax_
+
+                    if (this%mask(i, j, k) .ne. 0) cycle
+
+                    ! Update Cp of species
+                    call fcmech_get_thermodata(hs, Cps, this%SC(i, j, k, nspec1))
+
+                    ! Loop over species and compute temperature flux - sum(Cpsp*DF.grad(T))/Cpmix
+                    df1 = 0.0_WP; df2 = 0.0_WP; df3 = 0.0_WP
+                    do nsc = 1, nspec
+                        df1 = df1 + Cps(nsc)*sum(this%itp_x(:, i, j, k)*DFX(i - 1:i, j, k, nsc))
+                        df2 = df2 + Cps(nsc)*sum(this%itp_y(:, i, j, k)*DFY(i, j - 1:j, k, nsc))
+                        df3 = df3 + Cps(nsc)*sum(this%itp_z(:, i, j, k)*DFZ(i, j, k - 1:k, nsc))
+                    end do
+
+                    ! Temperature source
+                    this%SRCchem(i, j, k, nspec1) = this%SRCchem(i, j, k, nspec1) + dt/Cpmix(i, j, k)*( &
+                                                    df1*sum(this%grdsc_xm(:, i, j, k)*this%SC(i:i + 1, j, k, nspec1)) + &
+                                                    df2*sum(this%grdsc_ym(:, i, j, k)*this%SC(i, j:j + 1, k, nspec1)) + &
+                                                    df3*sum(this%grdsc_zm(:, i, j, k)*this%SC(i, j, k:k + 1, nspec1)))
+
+                end do
+            end do
+        end do
+
+        deallocate (FX, FY, FZ, DFX, DFY, DFZ, Cpmix, Wmol, tmp10, tmp11, tmp12)
+
+        return
+    end subroutine diffusive_source
 end module finitechem_class
