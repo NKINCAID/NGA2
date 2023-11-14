@@ -59,6 +59,7 @@ module simulation
     integer :: imin, imax, jmin, jmax, kmin, kmax, nx, ny, nz
 
     real(WP) :: t1, t2, t3, t4, t5, t6, t7
+    real(WP) :: int_RP = 0.0_WP
 
 contains
 
@@ -352,6 +353,8 @@ contains
             ! call mfile%add_column(fc%SCmin, 'Zmin')
             call mfile%add_column(fc%rhomax, 'RHOmax')
             call mfile%add_column(fc%rhomin, 'RHOmin')
+            call mfile%add_column(int_RP, 'Int(RP)')
+
             call mfile%add_column(fs%divmax, 'Maximum divergence')
             call mfile%add_column(fs%psolv%it, 'Pressure iteration')
             call mfile%add_column(fs%psolv%rerr, 'Pressure error')
@@ -408,7 +411,7 @@ contains
             fc%SCold = fc%SC
 
             ! Remember old velocity and momentum
-            fs%rhoold = fs%rho
+            fs%rhoold = fc%rho
             fs%Uold = fs%U; fs%rhoUold = fs%rhoU
             fs%Vold = fs%V; fs%rhoVold = fs%rhoV
             fs%Wold = fs%W; fs%rhoWold = fs%rhoW
@@ -433,7 +436,7 @@ contains
                     do nsc = 1, fc%nscalar
                         ! ============= SCALAR SOLVER =======================
                         ! Assemble explicit residual
-                       resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho * fc%SRCchem(:,:,:,nsc)
+                       resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho*fc%SRCchem(:,:,:,nsc)
                     end do
                     ! resSC = -2.0_WP*(fc%SC - fc%SCold) + time%dt*resSC
 
@@ -445,6 +448,37 @@ contains
                     ! Apply all other boundary conditions on the resulting field
                     call fc%apply_bcond(time%t, time%dt)
                 end block scalar_solver
+
+                test_fc: block
+                    use messager, only: die
+                    character(len=*), parameter :: FM1 = '(A10,A20, A20, A20, A20, A20)'
+                    character(len=*), parameter :: FM3 = '(A10,ES20.7,ES20.7,ES20.7,ES20.7,ES20.7)'
+                    character(len=*), parameter :: FM4 = '(A10,ES20.7)'
+
+                    real(WP), dimension(nspec + 1) :: sol, solold, delta, newsol, newdelta
+
+                    solold = fc%SCold(64, 64, 1, :)
+                    delta = fc%SRCchem(64, 64, 1, :)
+
+                    sol = solold + delta
+                    newsol = fc%SC(64, 64, 1, :)
+                    newdelta = fc%SC(64, 64, 1, :) - fc%SCold(64, 64, 1, :)
+
+                    write (unit=*, fmt=FM1) " ", "Old", "New", "Delta", "SC Solve", "SC Solve Delta"
+         write (unit=*, fmt=FM3) "Temp", solold(nspec + 1), sol(nspec + 1), delta(nspec + 1), newsol(nspec + 1), newdelta(nspec + 1)
+                    write (unit=*, fmt=FM3) "O2", solold(sO2), sol(sO2), delta(sO2), newsol(sO2), newdelta(SO2)
+                    write (unit=*, fmt=FM3) "HO2", solold(sHO2), sol(sHO2), delta(sHO2), newsol(sHO2), newdelta(sHO2)
+     write (unit=*, fmt=FM3) "NXC12H26", solold(sNXC12H26), sol(sNXC12H26), delta(sNXC12H26), newsol(sNXC12H26), newdelta(sNXC12H26)
+     write (unit=*, fmt=FM3) "SXC12H25", solold(sSXC12H25), sol(sSXC12H25), delta(sSXC12H25), newsol(sSXC12H25), newdelta(sSXC12H25)
+
+                    write (unit=*, fmt=FM4) "Density", fc%rho(64, 64, 1)
+                    write (unit=*, fmt=FM4) "Viscosity", fc%visc(64, 64, 1)
+
+                    fc%SRCchem = 0.0_WP
+
+                    call die("Merp")
+                end block test_fc
+
                 ! =============================================
                 ! ============ UPDATE PROPERTIES ====================
                 ! t4 = parallel_time()
@@ -495,7 +529,6 @@ contains
                 fs%W = 2.0_WP*fs%W - fs%Wold + resW
 
                 ! Apply other boundary conditions and update momentum
-                call fs%apply_bcond(time%tmid, time%dtmid)
                 call fs%rho_multiply()
                 call fs%apply_bcond(time%tmid, time%dtmid)
 
@@ -504,6 +537,7 @@ contains
                 call fs%correct_mfr(drhodt=resRHO)
                 call fs%get_div(drhodt=resRHO)
                 fs%psolv%rhs = -fs%cfg%vol*fs%div/time%dtmid
+                call cfg%integrate(A=fs%psolv%rhs, integral=int_RP)
                 fs%psolv%sol = 0.0_WP
                 call fs%psolv%solve()
                 call fs%shift_p(fs%psolv%sol)

@@ -23,8 +23,8 @@ module finitechem_class
     integer :: nspec2 = nspec + 2
 
     ! DVODE variables
-    real(WP) :: atol = 1.0e-8_WP
-    real(WP) :: rtol = 1.0e-8_WP
+    real(WP) :: atol = 1.0e-15_WP
+    real(WP) :: rtol = 1.0e-9_WP
     integer :: istate, itask
 
     ! Solver options

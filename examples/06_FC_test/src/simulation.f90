@@ -317,11 +317,11 @@ contains
             ! Assign constant viscosity
             ! call param_read('Dynamic viscosity', visc); fs%visc = visc
             ! Use slip on the sides with correction
-            call fs%add_bcond(name='ym_outflow', type=neumann, face='y', dir=-1, canCorrect=.True., locator=ym_locator)
-            call fs%add_bcond(name='yp_outflow', type=neumann, face='y', dir=+1, canCorrect=.True., locator=yp_locator)
+            call fs%add_bcond(name='ym_outflow', type=neumann, face='y', dir=-1, canCorrect=.False., locator=ym_locator)
+            call fs%add_bcond(name='yp_outflow', type=neumann, face='y', dir=+1, canCorrect=.False., locator=yp_locator)
             ! Outflow on the right
-            call fs%add_bcond(name='xm_outflow', type=neumann, face='x', dir=-1, canCorrect=.True., locator=xm_locator)
-            call fs%add_bcond(name='xp_outflow', type=neumann, face='x', dir=+1, canCorrect=.True., locator=xp_locator)
+            call fs%add_bcond(name='xm_outflow', type=neumann, face='x', dir=-1, canCorrect=.False., locator=xm_locator)
+            call fs%add_bcond(name='xp_outflow', type=neumann, face='x', dir=+1, canCorrect=.False., locator=xp_locator)
             ! ! Configure pressure solver
             ps = hypre_str(cfg=cfg, name='Pressure', method=pcg_pfmg, nst=7)
             ps%maxlevel = 18
