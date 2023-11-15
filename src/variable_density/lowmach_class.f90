@@ -1236,35 +1236,35 @@ allocate (this%grdv_z(-1:0, this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:thi
     subroutine rho_divide(this)
         implicit none
         class(lowmach), intent(inout) :: this
-        integer :: i, j, k
-        do k = this%cfg%kmin_, this%cfg%kmax_ + 1
-            do j = this%cfg%jmin_, this%cfg%jmax_ + 1
-                do i = this%cfg%imin_, this%cfg%imax_ + 1
-                    this%U(i, j, k) = this%rhoU(i, j, k)/sum(this%itpr_x(:, i, j, k)*this%rho(i - 1:i, j, k))
-                    this%V(i, j, k) = this%rhoV(i, j, k)/sum(this%itpr_y(:, i, j, k)*this%rho(i, j - 1:j, k))
-                    this%W(i, j, k) = this%rhoW(i, j, k)/sum(this%itpr_z(:, i, j, k)*this%rho(i, j, k - 1:k))
-                end do
+        integer :: i,j,k
+        do k=this%cfg%kmin_,this%cfg%kmax_+1
+        do j=this%cfg%jmin_,this%cfg%jmax_+1
+            do i=this%cfg%imin_,this%cfg%imax_+1
+                this%U(i,j,k)=this%rhoU(i,j,k)/sum(this%itpr_x(:,i,j,k)*this%rho(i-1:i,j,k))
+                this%V(i,j,k)=this%rhoV(i,j,k)/sum(this%itpr_y(:,i,j,k)*this%rho(i,j-1:j,k))
+                this%W(i,j,k)=this%rhoW(i,j,k)/sum(this%itpr_z(:,i,j,k)*this%rho(i,j,k-1:k))
             end do
+        end do
         end do
         ! Sync it
         call this%cfg%sync(this%U)
         call this%cfg%sync(this%V)
         call this%cfg%sync(this%W)
     end subroutine rho_divide
-
+ 
     !> Multiply velocity by rho to form momentum
     subroutine rho_multiply(this)
         implicit none
         class(lowmach), intent(inout) :: this
-        integer :: i, j, k
-        do k = this%cfg%kmin_, this%cfg%kmax_
-            do j = this%cfg%jmin_, this%cfg%jmax_
-                do i = this%cfg%imin_, this%cfg%imax_
-                    this%rhoU(i, j, k) = this%U(i, j, k)*sum(this%itpr_x(:, i, j, k)*this%rho(i - 1:i, j, k))
-                    this%rhoV(i, j, k) = this%V(i, j, k)*sum(this%itpr_y(:, i, j, k)*this%rho(i, j - 1:j, k))
-                    this%rhoW(i, j, k) = this%W(i, j, k)*sum(this%itpr_z(:, i, j, k)*this%rho(i, j, k - 1:k))
-                end do
+        integer :: i,j,k
+        do k=this%cfg%kmin_,this%cfg%kmax_+1
+        do j=this%cfg%jmin_,this%cfg%jmax_+1
+            do i=this%cfg%imin_,this%cfg%imax_+1
+                this%rhoU(i,j,k)=this%U(i,j,k)*sum(this%itpr_x(:,i,j,k)*this%rho(i-1:i,j,k))
+                this%rhoV(i,j,k)=this%V(i,j,k)*sum(this%itpr_y(:,i,j,k)*this%rho(i,j-1:j,k))
+                this%rhoW(i,j,k)=this%W(i,j,k)*sum(this%itpr_z(:,i,j,k)*this%rho(i,j,k-1:k))
             end do
+        end do
         end do
         ! Sync it
         call this%cfg%sync(this%rhoU)

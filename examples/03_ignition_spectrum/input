@@ -4,43 +4,48 @@ Partition : 8 1 1
 # Mesh definition
 Lx : 1
 Ly : 1
-Lz : 0.01
-nx : 64
-ny : 64
+Lz : 0.0025
+nx : 401
+ny : 401
 nz : 1
 
 # EOS parameters: rho(Z)=rho0*rho1/((1-Z)*rho1+Z*rho0)
-rho0 : 0.2
+rho0 : 0.3
 rho1 : 1
 
 # Fluid properties
-Dynamic viscosity   : 0.001
-Dynamic diffusivity : 0.0
+Dynamic viscosity   : 1e-5
+Dynamic diffusivity : 1e-5
 
 # Inflow definition
 Spot radius : 1
-Spot shift  = 2.5
+Spot shift  : 2.5
 Z spot      : 0.2
 Z air       : 1
+
+# Debug: neumann, clipped_neumann, slip, periodic
+Boundary condition : neumann
 
 # Initial conditions
 ks/ko : 5
 kc/ks : 2
-Buffer region length : 0.1
-Forcing constant     : 1.0
+Buffer region length : 0.45
+# Forcing constant     : 1.0
 Velocity fluctuation : 0.1
 Energetic scale      : 0.3
 Dissipative scale    : 0.01
 Dissipation          : 1e-3
 
 # Time integration
-Max timestep size :	2e-2
-Max cfl number    :	0.8
-Max time          : 0
+Time stepping     : implicit
+Max timestep size : 2e-2
+Max cfl number    : 0.8
+Inner iterations  : 10
+Max time          : 2
 
 # Pressure solver
 Pressure tolerance : 1e-6
-Pressure iteration : 100
+Pressure iteration : 500
 
 # Ensight output
-Ensight output period : 1e-1
+Ensight output period : 2e-1

@@ -1,7 +1,7 @@
 !> Various definitions and tools for running an NGA2 simulation
 module simulation
    use precision,         only: WP
-   use geometry,          only: cfg,Lx,Ly,Lz
+   use geometry,          only: cfg,Lx,Ly,Lz,boundary_condition
    use ddadi_class,       only: ddadi
    use hypre_str_class,   only: hypre_str
    use lowmach_class,     only: lowmach
@@ -41,6 +41,9 @@ module simulation
    real(WP) :: Z_spot,Z_air
    real(WP) :: radius, shift
 
+   !> Integral of pressure residual
+   real(WP) :: int_RP=0.0_WP
+
    !> Fluid, forcing, and particle parameters
    real(WP) :: visc,meanU,meanV,meanW
    real(WP) :: Urms0,TKE0,EPS0,Re_max
@@ -53,6 +56,9 @@ module simulation
    real(WP) :: Re_L,Re_lambda
    real(WP) :: eta,ell
    real(WP) :: dx_eta,ell_Lx,Re_ratio,eps_ratio,tke_ratio,nondtime
+
+   ! Debug
+   character(len=8) :: time_stepping
 
 
 contains
@@ -102,49 +108,48 @@ contains
    end function xp_locator
 
 
-   !> Function that localizes jet at -x
-   function xm_scalar(pg,i,j,k) result(isIn)
-      use pgrid_class, only: pgrid
-      class(pgrid), intent(in) :: pg
-      integer, intent(in) :: i,j,k
-      logical :: isIn
-      isIn=.false.
-      if (i .eq. pg%imin-1) isIn = .true.
-   end function xm_scalar
-
-
-   !> Function that localizes the right domain boundary
-   function xp_scalar(pg, i, j, k) result(isIn)
-      use pgrid_class, only: pgrid
-      class(pgrid), intent(in) :: pg
-      integer, intent(in) :: i, j, k
-      logical :: isIn
-      isIn = .false.
-      ! if (i .ge. pg%imax) isIn = .true.
-      if (i .eq. pg%imax) isIn = .true.
-   end function xp_scalar
-
-
    !> Function that localizes y- boundary
-   function ym_scalar(pg,i,j,k) result(isIn)
+   function ym_locator_sc(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
       class(pgrid), intent(in) :: pg
       integer, intent(in) :: i,j,k
       logical :: isIn
       isIn=.false.
       if (j.eq.pg%jmin-1) isIn=.true.
-   end function ym_scalar
+   end function ym_locator_sc
 
 
    !> Function that localizes y+ boundary
-   function yp_scalar(pg,i,j,k) result(isIn)
+   function yp_locator_sc(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
       class(pgrid), intent(in) :: pg
       integer, intent(in) :: i,j,k
       logical :: isIn
       isIn=.false.
-      if (j.eq.pg%jmax) isIn=.true.
-   end function yp_scalar
+      if (j.eq.pg%jmax+1) isIn=.true.
+   end function yp_locator_sc
+
+
+   !> Function that localizes jet at -x
+   function xm_locator_sc(pg,i,j,k) result(isIn)
+      use pgrid_class, only: pgrid
+      class(pgrid), intent(in) :: pg
+      integer, intent(in) :: i,j,k
+      logical :: isIn
+      isIn=.false.
+      if (i.eq.pg%imin-1) isIn=.true.
+   end function xm_locator_sc
+
+
+   !> Function that localizes the right domain boundary
+   function xp_locator_sc(pg, i, j, k) result(isIn)
+      use pgrid_class, only: pgrid
+      class(pgrid), intent(in) :: pg
+      integer, intent(in) :: i, j, k
+      logical :: isIn
+      isIn=.false.
+      if (i.eq.pg%imax+1) isIn=.true.
+   end function xp_locator_sc
 
 
    !> Define here our equation of state
@@ -280,15 +285,15 @@ contains
 
                ! Compute the Fourier coefficients
                if ((ks-dk/2.0_WP.le.kk).and.(kk.le.ks+dk/2.0_WP)) then
-                  f_phi = 1.0_WP
+                  f_phi=1.0_WP
                else
-                  f_phi = 0.0_WP
+                  f_phi=0.0_WP
                end if
                call random_number(rand)
                if (kk.lt.1e-10) then
-                  Cbuf(i,j,k) = 0.0_WP
+                  Cbuf(i,j,k)=0.0_WP
                else
-                  Cbuf(i,j,k) = sqrt(f_phi/(4.0_WP*pi*kk**2))*exp(ii*2.0_WP*pi*rand)
+                  Cbuf(i,j,k)=sqrt(f_phi/(4.0_WP*pi*kk**2))*exp(ii*2.0_WP*pi*rand)
                end if
             end do
          end do
@@ -309,9 +314,9 @@ contains
          do j=1,ny
             do i=1,nx
                if (Rbuf(i,j,k).le.0.0_WP) then
-                  Rbuf(i,j,k) = 0.0_WP
+                  Rbuf(i,j,k)=0.0_WP
                else
-                  Rbuf(i,j,k) = 1.0_WP
+                  Rbuf(i,j,k)=1.0_WP
                end if
             end do
          end do
@@ -334,9 +339,9 @@ contains
 
                ! Filter to remove high wavenumber components
                if (kk.le.kc) then
-                  Cbuf(i,j,k) = Cbuf(i,j,k) * 1.0_WP
+                  Cbuf(i,j,k)=Cbuf(i,j,k) * 1.0_WP
                else
-                  Cbuf(i,j,k) = Cbuf(i,j,k) * (kc/kk)**2
+                  Cbuf(i,j,k)=Cbuf(i,j,k) * (kc/kk)**2
                end if
             end do
          end do
@@ -353,7 +358,8 @@ contains
       ! Set zero in the buffer region
       tmp_sc=0.0_WP
       ! Set the internal scalar field
-      tmp_sc(imin:imax,jmin:jmax,kmin:kmax)=Rbuf/real(nx*ny*nz,WP)
+      ! tmp_sc(imin:imax,jmin:jmax,kmin:kmax)=Rbuf/real(nx*ny*nz,WP)
+      tmp_sc(imin:imax,jmin:jmax,kmin:kmax)=1.0_WP
 
       ! Destroy the plans
       call dfftw_destroy_plan(plan_c2r)
@@ -577,12 +583,19 @@ contains
 
    !> Initialization of problem solver
    subroutine simulation_init
-      use param, only: param_read
+      use param,    only: param_read
+      use messager, only: die
       implicit none
+
+
+      ! Debug
+      call param_read('Time stepping',time_stepping)
+      if ((time_stepping.ne.'explicit').and.(time_stepping.ne.'implicit')) call die('Incorrect time stepping option.')
 
       ! Read in the EOS info
       call param_read('rho0',rho0)
       call param_read('rho1',rho1)
+
 
       ! Read in inlet information
       call param_read('Spot radius',radius)
@@ -594,25 +607,43 @@ contains
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
          use hypre_str_class, only: pcg_pfmg
-         use lowmach_class,   only: dirichlet,clipped_neumann,slip
+         use lowmach_class,   only: dirichlet,clipped_neumann,neumann,slip
+         use messager,        only: die
          real(WP) :: visc
          ! Create flow solver
          fs=lowmach(cfg=cfg,name='Variable density low Mach NS')
          ! Assign constant viscosity
          call param_read('Dynamic viscosity',visc); fs%visc=visc
-         ! Use slip on the sides with correction
-         call fs%add_bcond(name='ym_outflow',type=clipped_neumann,face='y',dir=-1,canCorrect=.true.,locator=ym_locator)
-         call fs%add_bcond(name='yp_outflow',type=clipped_neumann,face='y',dir=+1,canCorrect=.true.,locator=yp_locator)
-         ! Outflow on the right
-         call fs%add_bcond(name='xm_outflow',type=clipped_neumann,face='x',dir=-1,canCorrect=.true.,locator=xm_locator)
-         call fs%add_bcond(name='xp_outflow',type=clipped_neumann,face='x',dir=+1,canCorrect=.true.,locator=xp_locator)
-         ! ! Configure pressure solver
+         ! Boundary conditions
+         select case (boundary_condition)
+          case ('neumann')
+            call fs%add_bcond(name='ym_outflow',type=neumann,face='y',dir=-1,canCorrect=.true.,locator=ym_locator)
+            call fs%add_bcond(name='yp_outflow',type=neumann,face='y',dir=+1,canCorrect=.true.,locator=yp_locator)
+            call fs%add_bcond(name='xm_outflow',type=neumann,face='x',dir=-1,canCorrect=.true.,locator=xm_locator)
+            call fs%add_bcond(name='xp_outflow',type=neumann,face='x',dir=+1,canCorrect=.true.,locator=xp_locator)
+          case ('clipped_neumann')
+            call fs%add_bcond(name='ym_outflow',type=clipped_neumann,face='y',dir=-1,canCorrect=.true.,locator=ym_locator)
+            call fs%add_bcond(name='yp_outflow',type=clipped_neumann,face='y',dir=+1,canCorrect=.true.,locator=yp_locator)
+            call fs%add_bcond(name='xm_outflow',type=clipped_neumann,face='x',dir=-1,canCorrect=.true.,locator=xm_locator)
+            call fs%add_bcond(name='xp_outflow',type=clipped_neumann,face='x',dir=+1,canCorrect=.true.,locator=xp_locator)
+          case ('slip')
+            call fs%add_bcond(name='ym_outflow',type=slip,face='y',dir=-1,canCorrect=.true.,locator=ym_locator)
+            call fs%add_bcond(name='yp_outflow',type=slip,face='y',dir=+1,canCorrect=.true.,locator=yp_locator)
+            call fs%add_bcond(name='xm_outflow',type=slip,face='x',dir=-1,canCorrect=.true.,locator=xm_locator)
+            call fs%add_bcond(name='xp_outflow',type=slip,face='x',dir=+1,canCorrect=.true.,locator=xp_locator)
+          case ('periodic')
+          case default
+            call die('Unknown BC')
+         end select
+         ! Configure pressure solver
          ps=hypre_str(cfg=cfg,name='Pressure',method=pcg_pfmg,nst=7)
          ps%maxlevel=18
          call param_read('Pressure iteration',ps%maxit)
          call param_read('Pressure tolerance',ps%rcvg)
          ! Configure implicit velocity solver
          vs=ddadi(cfg=cfg,name='Velocity',nst=7)
+         vs%maxit=100
+         vs%rcvg=1e-6
          ! Setup the solver
          call fs%setup(pressure_solver=ps,implicit_solver=vs)
       end block create_velocity_solver
@@ -621,14 +652,21 @@ contains
       ! Create a scalar solver
       create_scalar: block
          use vdscalar_class, only: dirichlet,neumann,quick
+         use messager,       only: die
          real(WP) :: diffusivity
          ! Create scalar solver
          sc=vdscalar(cfg=cfg,scheme=quick,name='MixFrac')
-         ! Outflow on the right
-         call sc%add_bcond(name='xm_outflow',type=neumann,locator=xm_scalar,dir='-x')
-         call sc%add_bcond(name='xp_outflow',type=neumann,locator=xp_scalar,dir='+x')
-         call sc%add_bcond(name='ym_outflow',type=neumann,locator=ym_scalar,dir='-y')
-         call sc%add_bcond(name='yp_outflow',type=neumann,locator=yp_scalar,dir='+y')
+         ! Boundary conditions
+         select case (boundary_condition)
+          case ('neumann','clipped_neumann','slip')
+            call sc%add_bcond(name='xm_outflow',type=neumann,locator=xm_locator_sc,dir='-x')
+            call sc%add_bcond(name='xp_outflow',type=neumann,locator=xp_locator_sc,dir='+x')
+            call sc%add_bcond(name='ym_outflow',type=neumann,locator=ym_locator_sc,dir='-y')
+            call sc%add_bcond(name='yp_outflow',type=neumann,locator=yp_locator_sc,dir='+y')
+          case ('periodic')
+          case default
+            call die('Unknown BC')
+         end select
          ! Assign constant diffusivity
          call param_read('Dynamic diffusivity',diffusivity)
          sc%diff=diffusivity
@@ -662,12 +700,12 @@ contains
 
       ! Initialize time tracker with 2 subiterations
       initialize_timetracker: block
-         time=timetracker(amRoot=fs%cfg%amRoot)
+         time=timetracker(amRoot=fs%cfg%amRoot,name='ignition')
          call param_read('Max timestep size',time%dtmax)
          call param_read('Max cfl number',time%cflmax)
          call param_read('Max time',time%tmax)
+         call param_read('Inner iterations',time%itmax)
          time%dt=time%dtmax
-         time%itmax=2
       end block initialize_timetracker
 
 
@@ -685,6 +723,8 @@ contains
          call MPI_BCAST(tmp_sc,sc%cfg%nx*sc%cfg%ny*sc%cfg%nz,MPI_REAL_WP,0,sc%cfg%comm,ierr)
          ! Set the local scalar field
          sc%SC(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)=tmp_sc(sc%cfg%imin_:sc%cfg%imax_,sc%cfg%jmin_:sc%cfg%jmax_,sc%cfg%kmin_:sc%cfg%kmax_)
+         ! Sync it
+         call sc%cfg%sync(sc%SC)
          ! Release memory
          deallocate(tmp_sc)
          ! Compute density
@@ -705,23 +745,29 @@ contains
          call param_read('Energetic scale',le)
          call param_read('Dissipative scale',ld)
          call param_read('Dissipation',epsilon)
-         ! Initialize the global velocity field
-         if (fs%cfg%amRoot) call ignition_spectrum(L_buffer,1.0_WP,le,ld,epsilon)
-         ! Communicate information
-         call MPI_BCAST(tmp_U,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
-         call MPI_BCAST(tmp_V,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
-         ! Set the local velocity field
-         fs%U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
-         fs%V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
+         ! ! Initialize the global velocity field
+         ! if (fs%cfg%amRoot) call ignition_spectrum(L_buffer,1.0_WP,le,ld,epsilon)
+         ! ! Communicate information
+         ! call MPI_BCAST(tmp_U,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
+         ! call MPI_BCAST(tmp_V,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
+         ! ! Set the local velocity field
+         ! fs%U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
+         ! fs%V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
+         fs%U=0.0_WP
+         fs%V=0.0_WP
          fs%W=0.0_WP
+         ! Sync it
+         call fs%cfg%sync(fs%U)
+         call fs%cfg%sync(fs%V)
+         call fs%cfg%sync(fs%W)
          ! Release memory
          deallocate(tmp_U)
          deallocate(tmp_V)
          ! Set density from scalar
          fs%rho=sc%rho
          ! Form momentum
-         call fs%rho_multiply
-         ! Apply all other boundary conditions
+         call fs%rho_multiply()
+         ! Apply BCs
          call fs%apply_bcond(time%t,time%dt)
          call fs%interp_vel(Ui,Vi,Wi)
          resSC=0.0_WP
@@ -734,7 +780,7 @@ contains
       ! Add Ensight output
       create_ensight: block
          ! Create Ensight output from cfg
-         ens_out=ensight(cfg=cfg,name='vdjet')
+         ens_out=ensight(cfg=cfg,name='ignition')
          ! Create event for Ensight output
          ens_evt=event(time=time,name='Ensight output')
          call param_read('Ensight output period',ens_evt%tper)
@@ -770,6 +816,7 @@ contains
          call mfile%add_column(sc%SCmin,'Zmin')
          call mfile%add_column(sc%rhomax,'RHOmax')
          call mfile%add_column(sc%rhomin,'RHOmin')
+         call mfile%add_column(int_RP,'Int(RP)')
          call mfile%add_column(fs%divmax,'Maximum divergence')
          call mfile%add_column(fs%psolv%it,'Pressure iteration')
          call mfile%add_column(fs%psolv%rerr,'Pressure error')
@@ -802,6 +849,8 @@ contains
    !> Perform an NGA2 simulation
    subroutine simulation_run
       implicit none
+      ! Debug
+      integer :: i,j,k
 
       ! Perform time integration
       do while (.not.time%done())
@@ -837,24 +886,30 @@ contains
             ! Assemble explicit residual
             resSC=time%dt*resSC-(2.0_WP*sc%rho*sc%SC-(sc%rho+sc%rhoold)*sc%SCold)
 
-            ! Form implicit residual
-            call sc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            ! Get the residual
+            if (time_stepping.eq.'implicit') then
+               ! Form implicit residual
+               call sc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            else
+               ! Divide by density
+               resSC=resSC/sc%rho
+            end if
 
-            ! Re-apply Dirichlet BCs
+            ! Advance scalar field
             sc%SC=2.0_WP*sc%SC-sc%SCold+resSC
 
-            ! Apply all other boundary conditions on the resulting field
+            ! Apply boundary conditions
             call sc%apply_bcond(time%t,time%dt)
 
             ! ===================================================
 
             ! ============ UPDATE PROPERTIES ====================
             ! Backup rhoSC
-            !resSC=sc%rho*sc%SC
+            ! resSC=sc%rho*sc%SC
             ! Update density
             call get_rho()
             ! Rescale scalar for conservation
-            !sc%SC=resSC/sc%rho
+            ! sc%SC=resSC/sc%rho
             ! UPDATE THE VISCOSITY
             ! UPDATE THE DIFFUSIVITY
             ! ===================================================
@@ -869,6 +924,7 @@ contains
             fs%V=0.5_WP*(fs%V+fs%Vold); fs%rhoV=0.5_WP*(fs%rhoV+fs%rhoVold)
             fs%W=0.5_WP*(fs%W+fs%Wold); fs%rhoW=0.5_WP*(fs%rhoW+fs%rhoWold)
 
+
             ! Explicit calculation of drho*u/dt from NS
             call fs%get_dmomdt(resU,resV,resW)
 
@@ -877,25 +933,41 @@ contains
             resV=time%dtmid*resV-(2.0_WP*fs%rhoV-2.0_WP*fs%rhoVold)
             resW=time%dtmid*resW-(2.0_WP*fs%rhoW-2.0_WP*fs%rhoWold)
 
-            ! Form implicit residuals
-            call fs%solve_implicit(time%dtmid,resU,resV,resW)
+            ! Get the residual
+            if (time_stepping.eq.'implicit') then
+               ! Form implicit residuals
+               call fs%solve_implicit(time%dtmid,resU,resV,resW)
+            else
+               ! Divide by density
+               do k=cfg%kmin_,cfg%kmax_+1
+                  do j=cfg%jmin_,cfg%jmax_+1
+                     do i=cfg%imin_,cfg%imax_+1
+                        resU(i,j,k)=resU(i,j,k)/sum(fs%itpr_x(:,i,j,k)*fs%rho(i-1:i,j,k))
+                        resV(i,j,k)=resV(i,j,k)/sum(fs%itpr_y(:,i,j,k)*fs%rho(i,j-1:j,k))
+                        resW(i,j,k)=resW(i,j,k)/sum(fs%itpr_z(:,i,j,k)*fs%rho(i,j,k-1:k))
+                     end do
+                  end do
+               end do
+               call fs%cfg%sync(resU)
+               call fs%cfg%sync(resV)
+               call fs%cfg%sync(resW)
+            end if
 
             ! Apply these residuals
             fs%U=2.0_WP*fs%U-fs%Uold+resU
             fs%V=2.0_WP*fs%V-fs%Vold+resV
             fs%W=2.0_WP*fs%W-fs%Wold+resW
 
-            ! Apply other boundary conditions and update momentum
-            call fs%apply_bcond(time%tmid,time%dtmid)
+            ! Update momentum
             call fs%rho_multiply()
+            ! Apply boundary conditions
             call fs%apply_bcond(time%tmid,time%dtmid)
-
-
             ! Solve Poisson equation
             call sc%get_drhodt(dt=time%dt,drhodt=resSC)
             call fs%correct_mfr(drhodt=resSC)
             call fs%get_div(drhodt=resSC)
             fs%psolv%rhs=-fs%cfg%vol*fs%div/time%dtmid
+            call cfg%integrate(A=fs%psolv%rhs,integral=int_RP)
             fs%psolv%sol=0.0_WP
             call fs%psolv%solve()
             call fs%shift_p(fs%psolv%sol)
@@ -906,7 +978,8 @@ contains
             fs%rhoU=fs%rhoU-time%dtmid*resU
             fs%rhoV=fs%rhoV-time%dtmid*resV
             fs%rhoW=fs%rhoW-time%dtmid*resW
-            call fs%rho_divide
+            call fs%rho_divide()
+            
             ! ===================================================
 
             ! Increment sub-iteration counter
@@ -916,6 +989,9 @@ contains
 
          ! Recompute interpolated velocity and divergence
          call fs%interp_vel(Ui,Vi,Wi)
+         ! Debug
+         if (cfg%iproc.eq.1) print*,'Ui left = ',Ui(cfg%imin,201,1)
+         if (cfg%iproc.eq.cfg%npx) print*,'Ui right = ',Ui(cfg%imax,201,1)
          call sc%get_drhodt(dt=time%dt,drhodt=resSC)
          call fs%get_div(drhodt=resSC)
 
