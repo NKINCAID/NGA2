@@ -705,7 +705,7 @@ contains
         implicit none
         class(finitechem), intent(inout) :: this
 
-        real(WP), dimension(:, :, :), allocatable :: Wmol, Cpmix, tmp10, tmp11, tmp12
+        real(WP), dimension(:, :, :), allocatable :: Wmix, Cpmix, tmp10, tmp11, tmp12
         real(WP), dimension(:, :, :), allocatable :: FX, FY, FZ
         real(WP), dimension(:, :, :, :), allocatable :: DFX, DFY, DFZ
         real(WP), intent(in) :: dt  !< Timestep size over which to advance
@@ -723,23 +723,23 @@ contains
         allocate (DFY(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_, 1:nspec))
         allocate (DFZ(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_, 1:nspec))
 
-        allocate (Wmol(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
+        allocate (Wmix(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
         allocate (Cpmix(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
         allocate (tmp10(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
         allocate (tmp11(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
         allocate (tmp12(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
 
-        ! Get Wmol and Cpmix fields
+        ! Get Wmix and Cpmix fields
         do k = this%cfg%kmino_, this%cfg%kmaxo_
             do j = this%cfg%jmino_, this%cfg%jmaxo_
                 do i = this%cfg%imino_, this%cfg%imaxo_
                     if (this%mask(i, j, k) .eq. 1) then
-                        Wmol(i, j, k) = 1.0_WP
+                        Wmix(i, j, k) = 1.0_WP
                         Cpmix(i, j, k) = 1.0_WP
                     else
                         Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
                         Ys = this%SC(i, j, k, 1:nspec)
-                        call this%get_Wmix(Ys, Wmol(i, j, k))
+                        call this%get_Wmix(Ys, Wmix(i, j, k))
                         call this%get_cpmix(Ys, Tmix, Cpmix(i, j, k))
                     end if
                 end do
@@ -753,15 +753,15 @@ contains
                 do j = this%cfg%jmin_, this%cfg%jmax_ + 1
                     do i = this%cfg%imin_, this%cfg%imax_ + 1
 
-                        ! Molar diffusion correction - DIFF/Wmol*Yi*grad(Wmol)
-                        FX(i, j, k) = sum(this%itp_x(:, i, j, k)*this%diff(i - 1:i, j, k, nsc)/Wmol(i - 1:i, j, k))* &
-                           sum(this%itp_x(:, i, j, k)*this%SC(i - 1:i, j, k, nsc))*sum(this%grdsc_x(:, i, j, k)*Wmol(i - 1:i, j, k))
+                        ! Molar diffusion correction - DIFF/Wmix*Yi*grad(Wmix)
+                        FX(i, j, k) = sum(this%itp_x(:, i, j, k)*this%diff(i - 1:i, j, k, nsc)/Wmix(i - 1:i, j, k))* &
+                           sum(this%itp_x(:, i, j, k)*this%SC(i - 1:i, j, k, nsc))*sum(this%grdsc_x(:, i, j, k)*Wmix(i - 1:i, j, k))
 
-                        FY(i, j, k) = sum(this%itp_y(:, i, j, k)*this%diff(i, j - 1:j, k, nsc)/Wmol(i, j - 1:j, k))* &
-                           sum(this%itp_y(:, i, j, k)*this%SC(i, j - 1:j, k, nsc))*sum(this%grdsc_y(:, i, j, k)*Wmol(i, j - 1:j, k))
+                        FY(i, j, k) = sum(this%itp_y(:, i, j, k)*this%diff(i, j - 1:j, k, nsc)/Wmix(i, j - 1:j, k))* &
+                           sum(this%itp_y(:, i, j, k)*this%SC(i, j - 1:j, k, nsc))*sum(this%grdsc_y(:, i, j, k)*Wmix(i, j - 1:j, k))
 
-                        FZ(i, j, k) = sum(this%itp_z(:, i, j, k)*this%diff(i, j, k - 1:k, nsc)/Wmol(i, j, k - 1:k))* &
-                           sum(this%itp_z(:, i, j, k)*this%SC(i, j, k - 1:k, nsc))*sum(this%grdsc_z(:, i, j, k)*Wmol(i, j, k - 1:k))
+                        FZ(i, j, k) = sum(this%itp_z(:, i, j, k)*this%diff(i, j, k - 1:k, nsc)/Wmix(i, j, k - 1:k))* &
+                           sum(this%itp_z(:, i, j, k)*this%SC(i, j, k - 1:k, nsc))*sum(this%grdsc_z(:, i, j, k)*Wmix(i, j, k - 1:k))
 
                         ! Store full diffusive flux
                         DFX(i, j, k, nsc) = FX(i, j, k) + sum(this%itp_x(:, i, j, k)*this%diff(i - 1:i, j, k, nsc))* &
@@ -849,7 +849,7 @@ contains
             end do
         end do
 
-        ! Update temperature and enthalpy source terms
+        ! Update temperature source terms
         do k = this%cfg%kmin_, this%cfg%kmax_
             do j = this%cfg%jmin_, this%cfg%jmax_
                 do i = this%cfg%imin_, this%cfg%imax_
@@ -877,7 +877,7 @@ contains
             end do
         end do
 
-        deallocate (FX, FY, FZ, DFX, DFY, DFZ, Cpmix, Wmol, tmp10, tmp11, tmp12)
+        deallocate (FX, FY, FZ, DFX, DFY, DFZ, Cpmix, Wmix, tmp10, tmp11, tmp12)
 
         return
     end subroutine diffusive_source

@@ -14,21 +14,26 @@ sim = ct.ReactorNet([r])
 states = ct.SolutionArray(gas)
 states.append(r.thermo.state)
 
-sim.advance(1.0e-5)
+time = 0.0
+dt = 1.0e-5
 
-states.append(r.thermo.state)
+for i in range(1,300):
+    sim.advance(time + dt)
 
+    states.append(r.thermo.state)
+    time += dt
 
-print('----------------------------------------------------------------------------------------------------')
-print('{:20} | {:20} | {:20} | {:20} '.format(" ", "Old", "New", "Delta"))
-print('----------------------------------------------------------------------------------------------------')
-print('{:20} | {:20.7e} | {:20.7e} | {:20.7e}'.format("Temp", states.T[0], states.T[1], states.T[1] - states.T[0]))
-specs = ["NXC12H26", "O2", "HO2", "SXC12H25"]
-for i in range(gas.n_species):
-    delta = abs(states[1].Y[i] - states[0].Y[i])
-    if gas.species_names[i] in specs:
-        print('{:20} | {:20.7e} | {:20.7e} | {:20.7e}'.format(gas.species_names[i], states[0].Y[i], states[1].Y[i], delta))
-print('----------------------------------------------------------------------------------------------------\n\n')
+    print(i, time)
+    print('----------------------------------------------------------------------------------------------------')
+    print('{:20} | {:20} | {:20} | {:20} '.format(" ", "Old", "New", "Delta"))
+    print('----------------------------------------------------------------------------------------------------')
+    print('{:20} | {:20.7e} | {:20.7e} | {:20.7e}'.format("Temp", states.T[i-1], states.T[i], states.T[i] - states.T[i-1]))
+    specs = ["NXC12H26", "O2", "HO2", "SXC12H25"]
+    for nsc in range(gas.n_species):
+        delta = (states[i].Y[nsc] - states[i-1].Y[nsc])
+        if gas.species_names[nsc] in specs:
+            print('{:20} | {:20.7e} | {:20.7e} | {:20.7e}'.format(gas.species_names[nsc], states[i-1].Y[nsc], states[i].Y[nsc], delta))
+    print('----------------------------------------------------------------------------------------------------\n\n')
 
 
 # print('--------------------------------------------------')

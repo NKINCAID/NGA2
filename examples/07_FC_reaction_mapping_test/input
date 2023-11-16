@@ -5,8 +5,8 @@ Partition : 1 1 1
 Lx : 1.0
 Ly : 1.0
 Lz : 0.01
-nx : 128
-ny : 128
+nx : 32
+ny : 32
 nz : 1
 
 # Inflow definition

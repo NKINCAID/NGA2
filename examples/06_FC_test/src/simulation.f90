@@ -382,7 +382,7 @@ contains
             call param_read('Max iterations', time%nmax)
 
             time%dt = time%dtmax
-            time%itmax = 2
+            time%itmax = 1
         end block initialize_timetracker
 
         ! Initialize our mixture fraction field

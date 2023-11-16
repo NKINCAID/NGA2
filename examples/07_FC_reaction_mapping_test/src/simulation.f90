@@ -210,7 +210,7 @@ contains
             call param_read('Max iterations', time%nmax)
 
             time%dt = time%dtmax
-            time%itmax = 2
+            time%itmax = 5
         end block initialize_timetracker
 
         ! Initialize our mixture fraction field
@@ -436,7 +436,9 @@ contains
                     do nsc = 1, fc%nscalar
                         ! ============= SCALAR SOLVER =======================
                         ! Assemble explicit residual
-                       resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho*fc%SRCchem(:,:,:,nsc)
+                        !    resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho*fc%SRCchem(:,:,:,nsc)
+                        resSC(:, :, :, nsc) = fc%rho*fc%SRCchem(:, :, :, nsc)
+
                     end do
                     ! resSC = -2.0_WP*(fc%SC - fc%SCold) + time%dt*resSC
 
@@ -453,30 +455,36 @@ contains
                     use messager, only: die
                     character(len=*), parameter :: FM1 = '(A10,A20, A20, A20, A20, A20)'
                     character(len=*), parameter :: FM3 = '(A10,ES20.7,ES20.7,ES20.7,ES20.7,ES20.7)'
-                    character(len=*), parameter :: FM4 = '(A10,ES20.7)'
+                    character(len=*), parameter :: FM4 = '(A10,ES20.7,ES20.7,ES20.7)'
 
                     real(WP), dimension(nspec + 1) :: sol, solold, delta, newsol, newdelta
 
-                    solold = fc%SCold(64, 64, 1, :)
-                    delta = fc%SRCchem(64, 64, 1, :)
+                    solold = fc%SCold(16, 16, 1, :)
+                    delta = fc%SRCchem(16, 16, 1, :)
 
                     sol = solold + delta
-                    newsol = fc%SC(64, 64, 1, :)
-                    newdelta = fc%SC(64, 64, 1, :) - fc%SCold(64, 64, 1, :)
-
-                    write (unit=*, fmt=FM1) " ", "Old", "New", "Delta", "SC Solve", "SC Solve Delta"
+                    newsol = fc%SC(16, 16, 1, :)
+                    newdelta = fc%SC(16, 16, 1, :) - fc%SCold(16, 16, 1, :)
+                    print *, time%n, time%t
+                    !                 write (unit=*, fmt=FM1) " ", "Old", "New", "Delta", "SC Solve", "SC Solve Delta"
+                    !      write (unit=*, fmt=FM3) "Temp", solold(nspec + 1), sol(nspec + 1), delta(nspec + 1), newsol(nspec + 1), newdelta(nspec + 1)
+                    !                 write (unit=*, fmt=FM3) "O2", solold(sO2), sol(sO2), delta(sO2), newsol(sO2), newdelta(SO2)
+                    !                 write (unit=*, fmt=FM3) "HO2", solold(sHO2), sol(sHO2), delta(sHO2), newsol(sHO2), newdelta(sHO2)
+                    !  write (unit=*, fmt=FM3) "NXC12H26", solold(sNXC12H26), sol(sNXC12H26), delta(sNXC12H26), newsol(sNXC12H26), newdelta(sNXC12H26)
+                    !  write (unit=*, fmt=FM3) "SXC12H25", solold(sSXC12H25), sol(sSXC12H25), delta(sSXC12H25), newsol(sSXC12H25), newdelta(sSXC12H25)
+                    write (unit=*, fmt=FM1) " ", "resSC ", "New", "Delta", "SC Solve", "SC Solve Delta"
          write (unit=*, fmt=FM3) "Temp", solold(nspec + 1), sol(nspec + 1), delta(nspec + 1), newsol(nspec + 1), newdelta(nspec + 1)
                     write (unit=*, fmt=FM3) "O2", solold(sO2), sol(sO2), delta(sO2), newsol(sO2), newdelta(SO2)
                     write (unit=*, fmt=FM3) "HO2", solold(sHO2), sol(sHO2), delta(sHO2), newsol(sHO2), newdelta(sHO2)
      write (unit=*, fmt=FM3) "NXC12H26", solold(sNXC12H26), sol(sNXC12H26), delta(sNXC12H26), newsol(sNXC12H26), newdelta(sNXC12H26)
      write (unit=*, fmt=FM3) "SXC12H25", solold(sSXC12H25), sol(sSXC12H25), delta(sSXC12H25), newsol(sSXC12H25), newdelta(sSXC12H25)
+                    print *, " "
+                    write (unit=*, fmt=FM1) " ", "rho ", "rho old", "delta rho", " ", " "
+                write (unit=*, fmt=FM4) "Density", fc%rho(16, 16, 1), fc%rhoold(16, 16, 1), fc%rho(16, 16, 1) - fc%rhoold(16, 16, 1)
+                    write (unit=*, fmt=FM4) "Viscosity", fc%visc(16, 16, 1)
+                    print *, "------------------------------------------------------------------------------"
 
-                    write (unit=*, fmt=FM4) "Density", fc%rho(64, 64, 1)
-                    write (unit=*, fmt=FM4) "Viscosity", fc%visc(64, 64, 1)
-
-                    fc%SRCchem = 0.0_WP
-
-                    call die("Merp")
+                    ! call die("Merp")
                 end block test_fc
 
                 ! =============================================
