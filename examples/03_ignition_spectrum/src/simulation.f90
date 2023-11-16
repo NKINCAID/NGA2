@@ -851,8 +851,8 @@ contains
             ! Perform sub-iterations
             do while (time%it .le. time%itmax)
 
-                t1 = parallel_time()
                 ! ============= SCALAR SOLVER =======================
+                
                 ! Build mid-time scalar
                 sc%SC = 0.5_WP*(sc%SC + sc%SCold)
 
