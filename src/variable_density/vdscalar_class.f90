@@ -7,7 +7,6 @@ module vdscalar_class
     use config_class, only: config
     use linsol_class, only: linsol
     use iterator_class, only: iterator
-    use parallel, only: parallel_time
     implicit none
     private
 
@@ -20,7 +19,6 @@ module vdscalar_class
 
     ! List of available advection schemes for scalar transport
     integer, parameter, public :: quick = 1                    !< Quick scheme
-    real(WP) :: t1, t2
 
     !> Boundary conditions for the incompressible solver
     type :: bcond
@@ -521,22 +519,15 @@ allocate (this%itp_z(-1:0, this%cfg%imin_:this%cfg%imax_ + 1, this%cfg%jmin_:thi
     end subroutine apply_bcond
 
     !> Calculate the explicit rhoSC time derivative based on rhoU/rhoV/rhoW
-    subroutine get_drhoSCdt(this, drhoSCdt, tmpSC, tmpDIFF, rhoU, rhoV, rhoW)
+    subroutine get_drhoSCdt(this, drhoSCdt, rhoU, rhoV, rhoW)
         implicit none
         class(vdscalar), intent(inout) :: this
         real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(out) :: drhoSCdt !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
         real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in)  :: rhoU     !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
         real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in)  :: rhoV     !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
         real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in)  :: rhoW     !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
-        real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(out) :: tmpSC !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
-        real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(out) :: tmpDIFF !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
-
         integer :: i, j, k
         real(WP), dimension(:, :, :), allocatable :: FX, FY, FZ
-        real(WP) :: t1, t2
-
-        t1 = parallel_time()
-
         ! Zero out drhoSC/dt array
         drhoSCdt = 0.0_WP
         ! Allocate flux arrays
@@ -548,17 +539,17 @@ allocate (this%itp_z(-1:0, this%cfg%imin_:this%cfg%imax_ + 1, this%cfg%jmin_:thi
             do j = this%cfg%jmin_, this%cfg%jmax_ + 1
                 do i = this%cfg%imin_, this%cfg%imax_ + 1
                     ! Fluxes on x-face
-FX(i, j, k) = -0.5_WP*(rhoU(i, j, k) + abs(rhoU(i, j, k)))*sum(this%itpsc_xp(:, i, j, k)*tmpSC(i + this%stp1:i + this%stp2, j, k)) &
-   &         - 0.5_WP*(rhoU(i, j, k) - abs(rhoU(i, j, k)))*sum(this%itpsc_xm(:, i, j, k)*tmpSC(i + this%stm1:i + this%stm2, j, k)) &
-                   &         + sum(this%itp_x(:, i, j, k)*tmpDIFF(i - 1:i, j, k))*sum(this%grdsc_x(:, i, j, k)*tmpSC(i - 1:i, j, k))
+                 FX(i,j,k)=-0.5_WP*(rhoU(i,j,k)+abs(rhoU(i,j,k)))*sum(this%itpsc_xp(:,i,j,k)*this%SC(i+this%stp1:i+this%stp2,j,k)) &
+ &         - 0.5_WP*(rhoU(i, j, k) - abs(rhoU(i, j, k)))*sum(this%itpsc_xm(:, i, j, k)*this%SC(i + this%stm1:i + this%stm2, j, k)) &
+               &         + sum(this%itp_x(:, i, j, k)*this%diff(i - 1:i, j, k))*sum(this%grdsc_x(:, i, j, k)*this%SC(i - 1:i, j, k))
                     ! Fluxes on y-face
-FY(i, j, k) = -0.5_WP*(rhoV(i, j, k) + abs(rhoV(i, j, k)))*sum(this%itpsc_yp(:, i, j, k)*tmpSC(i, j + this%stp1:j + this%stp2, k)) &
-   &         - 0.5_WP*(rhoV(i, j, k) - abs(rhoV(i, j, k)))*sum(this%itpsc_ym(:, i, j, k)*tmpSC(i, j + this%stm1:j + this%stm2, k)) &
-                   &         + sum(this%itp_y(:, i, j, k)*tmpDIFF(i, j - 1:j, k))*sum(this%grdsc_y(:, i, j, k)*tmpSC(i, j - 1:j, k))
+                 FY(i,j,k)=-0.5_WP*(rhoV(i,j,k)+abs(rhoV(i,j,k)))*sum(this%itpsc_yp(:,i,j,k)*this%SC(i,j+this%stp1:j+this%stp2,k)) &
+ &         - 0.5_WP*(rhoV(i, j, k) - abs(rhoV(i, j, k)))*sum(this%itpsc_ym(:, i, j, k)*this%SC(i, j + this%stm1:j + this%stm2, k)) &
+               &         + sum(this%itp_y(:, i, j, k)*this%diff(i, j - 1:j, k))*sum(this%grdsc_y(:, i, j, k)*this%SC(i, j - 1:j, k))
                     ! Fluxes on z-face
-FZ(i, j, k) = -0.5_WP*(rhoW(i, j, k) + abs(rhoW(i, j, k)))*sum(this%itpsc_zp(:, i, j, k)*tmpSC(i, j, k + this%stp1:k + this%stp2)) &
-   &         - 0.5_WP*(rhoW(i, j, k) - abs(rhoW(i, j, k)))*sum(this%itpsc_zm(:, i, j, k)*tmpSC(i, j, k + this%stm1:k + this%stm2)) &
-                   &         + sum(this%itp_z(:, i, j, k)*tmpDIFF(i, j, k - 1:k))*sum(this%grdsc_z(:, i, j, k)*tmpSC(i, j, k - 1:k))
+                 FZ(i,j,k)=-0.5_WP*(rhoW(i,j,k)+abs(rhoW(i,j,k)))*sum(this%itpsc_zp(:,i,j,k)*this%SC(i,j,k+this%stp1:k+this%stp2)) &
+ &         - 0.5_WP*(rhoW(i, j, k) - abs(rhoW(i, j, k)))*sum(this%itpsc_zm(:, i, j, k)*this%SC(i, j, k + this%stm1:k + this%stm2)) &
+               &         + sum(this%itp_z(:, i, j, k)*this%diff(i, j, k - 1:k))*sum(this%grdsc_z(:, i, j, k)*this%SC(i, j, k - 1:k))
                 end do
             end do
         end do
@@ -575,13 +566,7 @@ FZ(i, j, k) = -0.5_WP*(rhoW(i, j, k) + abs(rhoW(i, j, k)))*sum(this%itpsc_zp(:, 
         ! Deallocate flux arrays
         deallocate (FX, FY, FZ)
         ! Sync residual
-        ! call this%cfg%sync(drhoSCdt)
-
-        t2 = parallel_time()
-        print *, "---------------------------------------------"
-        print *, "INSIDE VDSCALAR"
-        print *, "drhoscdt : ", t2 - t1
-
+        call this%cfg%sync(drhoSCdt)
     end subroutine get_drhoSCdt
 
     !> Calculate the time derivative of rho
@@ -667,7 +652,6 @@ FZ(i, j, k) = -0.5_WP*(rhoW(i, j, k) + abs(rhoW(i, j, k)))*sum(this%itpsc_zp(:, 
         real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in)    :: rhoV  !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
         real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in)    :: rhoW  !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
         integer :: i, j, k, sti, std
-        t1 = parallel_time()
 
         ! Prepare convective operator
         do k = this%cfg%kmin_, this%cfg%kmax_
@@ -730,10 +714,6 @@ FZ(i, j, k) = -0.5_WP*(rhoW(i, j, k) + abs(rhoW(i, j, k)))*sum(this%itpsc_zp(:, 
         ! Sync up residual
         call this%cfg%sync(resSC)
 
-        ! t2 = parallel_time()
-
-        ! print *, "solve_implicit : ", t2 - t1
-        ! print *, "---------------------------------------------"
     end subroutine solve_implicit
 
     !> Print out info for vdscalar solver
