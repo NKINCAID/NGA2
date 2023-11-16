@@ -732,7 +732,6 @@ contains
                 ! Apply other boundary conditions and update momentum
                 call fs%apply_bcond(time%tmid, time%dtmid)
                 call fs%rho_multiply()
-                call fs%apply_bcond(time%tmid, time%dtmid)
 
                 ! Solve Poisson equation
                 call fc%get_drhodt(dt=time%dt, drhodt=resRHO)
