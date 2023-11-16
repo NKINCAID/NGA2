@@ -309,7 +309,7 @@ contains
 
         ! Create a low-Mach flow solver with bconds
         create_velocity_solver: block
-            use hypre_str_class, only: pcg_pfmg
+            use hypre_str_class, only: pcg_pfmg, smg
             use lowmach_class, only: dirichlet, clipped_neumann, slip, neumann
             real(WP) :: visc
             ! Create flow solver
@@ -317,13 +317,13 @@ contains
             ! Assign constant viscosity
             ! call param_read('Dynamic viscosity', visc); fs%visc = visc
             ! Use slip on the sides with correction
-            call fs%add_bcond(name='ym_outflow', type=neumann, face='y', dir=-1, canCorrect=.False., locator=ym_locator)
-            call fs%add_bcond(name='yp_outflow', type=neumann, face='y', dir=+1, canCorrect=.False., locator=yp_locator)
+            call fs%add_bcond(name='ym_outflow', type=neumann, face='y', dir=-1, canCorrect=.True., locator=ym_locator)
+            call fs%add_bcond(name='yp_outflow', type=neumann, face='y', dir=+1, canCorrect=.True., locator=yp_locator)
             ! Outflow on the right
-            call fs%add_bcond(name='xm_outflow', type=neumann, face='x', dir=-1, canCorrect=.False., locator=xm_locator)
-            call fs%add_bcond(name='xp_outflow', type=neumann, face='x', dir=+1, canCorrect=.False., locator=xp_locator)
+            call fs%add_bcond(name='xm_outflow', type=neumann, face='x', dir=-1, canCorrect=.True., locator=xm_locator)
+            call fs%add_bcond(name='xp_outflow', type=neumann, face='x', dir=+1, canCorrect=.True., locator=xp_locator)
             ! ! Configure pressure solver
-            ps = hypre_str(cfg=cfg, name='Pressure', method=pcg_pfmg, nst=7)
+            ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
             ps%maxlevel = 18
             call param_read('Pressure iteration', ps%maxit)
             call param_read('Pressure tolerance', ps%rcvg)
@@ -382,7 +382,7 @@ contains
             call param_read('Max iterations', time%nmax)
 
             time%dt = time%dtmax
-            time%itmax = 1
+            time%itmax = 5
         end block initialize_timetracker
 
         ! Initialize our mixture fraction field
@@ -769,6 +769,19 @@ contains
             call fs%get_max()
             call fc%get_max()
 
+            ! test: block
+            !     use messager, only: die
+
+            !     integer:: i, j, k
+            !     do k = fc%cfg%kmino_, fc%cfg%kmaxo_
+            !         do j = fc%cfg%jmino_, fc%cfg%jmaxo_
+            !             do i = fc%cfg%imino_, fc%cfg%imaxo_
+            ! print *, i, j, k, fc%rho(i, j, k), fc%SC(i, j, k, nspec + 1), fc%SC(i, j, k, sN2), fc%SC(i, j, k, sO2), fc%mask(i, j, k)
+            !             end do
+            !         end do
+            !     end do
+            !     call die("Merp")
+            ! end block test
             call mfile%write()
             call cflfile%write()
             call consfile%write()

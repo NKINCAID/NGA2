@@ -466,8 +466,8 @@ contains
         do k = this%cfg%kmino_, this%cfg%kmaxo_
             do j = this%cfg%jmino_, this%cfg%jmaxo_
                 do i = this%cfg%imino_, this%cfg%imaxo_
-                    if (this%mask(i, j, k) .ne. 0) then
-                        this%rho(i, j, k) = 1.0_WP
+                    if (this%mask(i, j, k) .eq. 1) then
+                        this%rho(i, j, k) = 1000.0_WP
                     else
                         Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
                         Ys = this%SC(i, j, k, 1:nspec)
@@ -501,7 +501,7 @@ contains
         do k = this%cfg%kmino_, this%cfg%kmaxo_
             do j = this%cfg%jmino_, this%cfg%jmaxo_
                 do i = this%cfg%imino_, this%cfg%imaxo_
-                    if (this%mask(i, j, k) .ne. 0) cycle
+                    if (this%mask(i, j, k) .eq. 1) cycle
 
                     ! Pure compounds viscosity
                     Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
@@ -569,7 +569,7 @@ contains
         do k = this%cfg%kmino_, this%cfg%kmaxo_
             do j = this%cfg%jmino_, this%cfg%jmaxo_
                 do i = this%cfg%imino_, this%cfg%imaxo_
-                    if (this%mask(i, j, k) .ne. 0) cycle
+                    if (this%mask(i, j, k) .eq. 1) cycle
 
                     ! ---- Thermal diffusivity ---- !
                     ! Mixture molar mass and temperature
@@ -854,7 +854,7 @@ contains
             do j = this%cfg%jmin_, this%cfg%jmax_
                 do i = this%cfg%imin_, this%cfg%imax_
 
-                    if (this%mask(i, j, k) .ne. 0) cycle
+                    if (this%mask(i, j, k) .eq. 1) cycle
 
                     ! Update Cp of species
                     call fcmech_get_thermodata(hs, Cps, this%SC(i, j, k, nspec1))

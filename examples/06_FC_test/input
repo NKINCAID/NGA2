@@ -28,7 +28,7 @@ Max time          : 0.01
 Max iterations    : 1000
 
 # Pressure solver
-Pressure tolerance : 1e-8
+Pressure tolerance : 1e-10
 Pressure iteration : 100
 
 # Ensight output
