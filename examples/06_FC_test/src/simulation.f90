@@ -288,7 +288,7 @@ contains
         do k = kmin, kmax
             do j = jmin, jmax
                 do i = imin, imax
-                    tmp_sc(i, j, 1) = (tmp_sc(i, j, 1) - tmp_sc_min)/(tmp_sc_max - tmp_sc_min)*0.6_WP + 0.7_WP
+                    tmp_sc(i, j, 1) = (tmp_sc(i, j, 1) - tmp_sc_min)/(tmp_sc_max - tmp_sc_min)*1.3_WP
                 end do
             end do
         end do
@@ -479,22 +479,26 @@ contains
                 do j = fc%cfg%jmino_, fc%cfg%jmaxo_
                     do i = fc%cfg%imino_, fc%cfg%imaxo_
                      if (i .ge. imin .and. i .le. imax .and. j .ge. jmin .and. j .le. jmax .and. k .ge. kmin .and. k .le. kmax) then
-                            ! Set mass fraction of fuel
-                            fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
-                                                       (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                        (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                            ! Set mass fraction of O2
-                            fc%SC(i, j, k, isc_o2) = W_sp(isc_o2)/ &
-                                                     (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                      (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                            ! Set mass fraction of N2
-                            fc%SC(i, j, k, isc_n2) = 3.76_WP*W_sp(isc_n2)/ &
-                                                     (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                      (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-
+                            continue
                         else
-                            fc%SC(i, j, k, isc_n2) = 1.0_WP
+                            tmp_sc(i, j, k) = 0.0_WP
                         end if
+                        ! Set mass fraction of fuel
+                        fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
+                                                   (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                                    (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                        ! Set mass fraction of O2
+                        fc%SC(i, j, k, isc_o2) = W_sp(isc_o2)/ &
+                                                 (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                                  (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                        ! Set mass fraction of N2
+                        fc%SC(i, j, k, isc_n2) = 3.76_WP*W_sp(isc_n2)/ &
+                                                 (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                                  (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+
+                        ! else
+                        !     fc%SC(i, j, k, isc_n2) = 1.0_WP
+                        ! end if
                         fc%SC(i, j, k, isc_T) = T_init
                     end do
                 end do

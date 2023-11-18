@@ -10,9 +10,9 @@ ny : 128
 nz : 1
 
 # Inflow definition
-ks/ko : 1.5
+ks/ko : 3
 kc/ks : 2
-Buffer region length : 0.25
+Buffer region length : 0
 
 Forcing constant     : 1.0
 Velocity fluctuation : 0.1
@@ -39,3 +39,5 @@ Fuel : NXC12H26
 Oxidizer : air
 
 T init : 750
+
+Boundary condition : periodic
