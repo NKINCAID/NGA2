@@ -25,8 +25,8 @@ SV relaxation tau : 4
 
 # Injection velocity
 Jet velocity : 24.0
-Pilot velocity : 5.6
-Coflow velocity : 1.5
+Pilot velocity : 12.0
+Coflow velocity : 12.0
 
 # PDF parameters
 Number of particles per cell : 20

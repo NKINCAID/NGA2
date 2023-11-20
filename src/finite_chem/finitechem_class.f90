@@ -42,10 +42,12 @@ module finitechem_class
         real(WP), dimension(:, :, :, :), pointer :: Y   !< Composition
 
         real(WP) :: Pthermo, Pthermo_old     !< Thermodynamic pressure
+        real(WP) :: RHOmean, RHO_0
 
         real(WP), dimension(:, :, :), allocatable :: visc     !< Viscosity field
         real(WP), dimension(:, :, :), allocatable :: sumY     !< Viscosity field
-        real(WP), dimension(:, :, :, :), allocatable :: SRCchem     !< Viscosity field
+        real(WP), dimension(:, :, :, :), allocatable :: SRCchem     !< Chemical source term
+        real(WP), dimension(:, :, :, :), allocatable :: SRC     !< Total src term for scalar equation
         real(WP), dimension(:, :, :), allocatable :: h                    !< Enthalpy
 
         real(WP), dimension(:, :, :), allocatable :: lambda     !< Thermal conductivity
@@ -65,14 +67,14 @@ module finitechem_class
         procedure :: get_cpmix
         procedure :: get_Wmix
         procedure :: get_enthalpy
-
         ! procedure :: get_Wmix
         ! procedure :: get_sv
         ! procedure :: get_thermodata
         ! procedure :: H2T
         procedure :: react
         procedure :: diffusive_source
-
+        procedure :: pressure_source
+        procedure :: update_pressure
         procedure :: clip
 
         procedure :: get_max => fc_get_max                   !< Augment multiscalar's default monitoring
@@ -108,7 +110,8 @@ contains
         allocate (self%lambda(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%lambda = 0.0_WP
         allocate (self%cp(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%cp = 0.0_WP
         allocate (self%h(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%h = 0.0_WP
- allocate (self%SRCchem(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_, nspec+1)); self%SRCchem = 0.0_WP
+   allocate (self%SRCchem(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_, nspec + 1)); self%SRCchem = 0.0_WP
+   allocate (self%SRC(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_, nspec + 1)); self%SRC = 0.0_WP
 
         ! Allocate finite difference velocity gradient operators
    allocate (self%grdsc_xm(0:+1, self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_))
@@ -690,8 +693,36 @@ contains
         use parallel, only: MPI_REAL_WP
         implicit none
         class(finitechem), intent(inout) :: this
-        integer :: ierr, nsc
-        real(WP) :: my_visc_max, my_visc_min, my_rhomax, my_rhomin
+        integer :: ierr, i, j, k, nsc
+        real(WP) :: my_visc_max, my_visc_min, my_rhomax, my_rhomin, my_SCmax, my_SCmin, my_rhoSCmax, my_rhoSCmin
+
+        my_SCmax = -huge(1.0_WP)
+        my_SCmin = +huge(1.0_WP)
+        my_rhomax = -huge(1.0_WP)
+        my_rhomin = +huge(1.0_WP)
+        my_rhoSCmax = -huge(1.0_WP)
+        my_rhoSCmin = +huge(1.0_WP)
+        my_rhomax = maxval(this%rho(:, :, :)); call MPI_ALLREDUCE(my_rhomax, this%rhomax, 1, MPI_REAL_WP, MPI_MAX, this%cfg%comm, ierr)
+        my_rhomin = minval(this%rho(:, :, :)); call MPI_ALLREDUCE(my_rhomin, this%rhomin, 1, MPI_REAL_WP, MPI_MIN, this%cfg%comm, ierr)
+        do nsc = 1, this%nscalar
+            do k = this%cfg%kmin_, this%cfg%kmax_
+                do j = this%cfg%jmin_, this%cfg%jmax_
+                    do i = this%cfg%imin_, this%cfg%imax_
+                        ! Skip only walls
+                        if (this%mask(i, j, k) .ne. 1) then
+                            my_SCmax = max(this%SC(i, j, k, nsc), my_SCmax)
+                            my_SCmin = min(this%SC(i, j, k, nsc), my_SCmin)
+                            my_rhoSCmax = max(this%rhoSC(i, j, k, nsc), my_rhoSCmax)
+                            my_rhoSCmin = min(this%rhoSC(i, j, k, nsc), my_rhoSCmin)
+                        end if
+                    end do
+                end do
+            end do
+            call MPI_ALLREDUCE(my_SCmax, this%SCmax(nsc), 1, MPI_REAL_WP, MPI_MAX, this%cfg%comm, ierr)
+            call MPI_ALLREDUCE(my_SCmin, this%SCmin(nsc), 1, MPI_REAL_WP, MPI_MIN, this%cfg%comm, ierr)
+            call MPI_ALLREDUCE(my_rhoSCmax, this%rhoSCmax(nsc), 1, MPI_REAL_WP, MPI_MAX, this%cfg%comm, ierr)
+            call MPI_ALLREDUCE(my_rhoSCmin, this%rhoSCmin(nsc), 1, MPI_REAL_WP, MPI_MIN, this%cfg%comm, ierr)
+        end do
 
         my_visc_max = maxval(this%visc); call MPI_ALLREDUCE(my_visc_max, this%visc_max, 1, MPI_REAL_WP, MPI_MAX, this%cfg%comm, ierr)
         my_visc_min = minval(this%visc); call MPI_ALLREDUCE(my_visc_min, this%visc_min, 1, MPI_REAL_WP, MPI_MIN, this%cfg%comm, ierr)
@@ -781,10 +812,10 @@ contains
             do k = this%cfg%kmin_, this%cfg%kmax_
                 do j = this%cfg%jmin_, this%cfg%jmax_
                     do i = this%cfg%imin_, this%cfg%imax_
-                        this%SRCchem(i, j, k, nsc) = this%SRCchem(i, j, k, nsc) + dt*( &
-                                                     sum(this%divsc_x(i, j, k, :)*FX(i:i + 1, j, k)) + &
-                                                     sum(this%divsc_y(i, j, k, :)*FY(i, j:j + 1, k)) + &
-                                                     sum(this%divsc_z(i, j, k, :)*FZ(i, j, k:k + 1)))
+                        this%SRC(i, j, k, nsc) = this%SRC(i, j, k, nsc) + dt*( &
+                                                 sum(this%divsc_x(i, j, k, :)*FX(i:i + 1, j, k)) + &
+                                                 sum(this%divsc_y(i, j, k, :)*FY(i, j:j + 1, k)) + &
+                                                 sum(this%divsc_z(i, j, k, :)*FZ(i, j, k:k + 1)))
                     end do
                 end do
             end do
@@ -827,10 +858,10 @@ contains
             do k = this%cfg%kmin_, this%cfg%kmax_
                 do j = this%cfg%jmin_, this%cfg%jmax_
                     do i = this%cfg%imin_, this%cfg%imax_
-                        this%SRCchem(i, j, k, nsc) = this%SRCchem(i, j, k, nsc) + dt*( &
-                                                     sum(this%divsc_x(i, j, k, :)*FX(i:i + 1, j, k)) + &
-                                                     sum(this%divsc_y(i, j, k, :)*FY(i, j:j + 1, k)) + &
-                                                     sum(this%divsc_z(i, j, k, :)*FZ(i, j, k:k + 1)))
+                        this%SRC(i, j, k, nsc) = this%SRC(i, j, k, nsc) + dt*( &
+                                                 sum(this%divsc_x(i, j, k, :)*FX(i:i + 1, j, k)) + &
+                                                 sum(this%divsc_y(i, j, k, :)*FY(i, j:j + 1, k)) + &
+                                                 sum(this%divsc_z(i, j, k, :)*FZ(i, j, k:k + 1)))
                     end do
                 end do
             end do
@@ -841,7 +872,7 @@ contains
         do k = this%cfg%kmin_, this%cfg%kmax_
             do j = this%cfg%jmin_, this%cfg%jmax_
                 do i = this%cfg%imin_, this%cfg%imax_
-                    this%SRCchem(i, j, k, nspec1) = this%SRCchem(i, j, k, nspec1) + dt*this%diff(i, j, k, nspec1)/Cpmix(i, j, k)*( &
+                    this%SRC(i, j, k, nspec1) = this%SRC(i, j, k, nspec1) + dt*this%diff(i, j, k, nspec1)/Cpmix(i, j, k)*( &
                sum(this%grdsc_xm(:, i, j, k)*Cpmix(i:i + 1, j, k))*sum(this%grdsc_xm(:, i, j, k)*this%SC(i:i + 1, j, k, nspec1)) + &
                sum(this%grdsc_ym(:, i, j, k)*Cpmix(i, j:j + 1, k))*sum(this%grdsc_ym(:, i, j, k)*this%SC(i, j:j + 1, k, nspec1)) + &
                   sum(this%grdsc_zm(:, i, j, k)*Cpmix(i, j, k:k + 1))*sum(this%grdsc_zm(:, i, j, k)*this%SC(i, j, k:k + 1, nspec1)))
@@ -868,10 +899,10 @@ contains
                     end do
 
                     ! Temperature source
-                    this%SRCchem(i, j, k, nspec1) = this%SRCchem(i, j, k, nspec1) + dt/Cpmix(i, j, k)*( &
-                                                    df1*sum(this%grdsc_xm(:, i, j, k)*this%SC(i:i + 1, j, k, nspec1)) + &
-                                                    df2*sum(this%grdsc_ym(:, i, j, k)*this%SC(i, j:j + 1, k, nspec1)) + &
-                                                    df3*sum(this%grdsc_zm(:, i, j, k)*this%SC(i, j, k:k + 1, nspec1)))
+                    this%SRC(i, j, k, nspec1) = this%SRC(i, j, k, nspec1) + dt/Cpmix(i, j, k)*( &
+                                                df1*sum(this%grdsc_xm(:, i, j, k)*this%SC(i:i + 1, j, k, nspec1)) + &
+                                                df2*sum(this%grdsc_ym(:, i, j, k)*this%SC(i, j:j + 1, k, nspec1)) + &
+                                                df3*sum(this%grdsc_zm(:, i, j, k)*this%SC(i, j, k:k + 1, nspec1)))
 
                 end do
             end do
@@ -881,4 +912,55 @@ contains
 
         return
     end subroutine diffusive_source
+
+    subroutine pressure_source(this)
+        implicit none
+        class(finitechem), intent(inout) :: this
+        real(WP) :: Cp_mix, Tmix
+        integer :: i, j, k
+        real(WP), dimension(nspec) :: Ys
+        ! Compute pressure source term
+        do k = this%cfg%kmin_, this%cfg%kmax_
+            do j = this%cfg%jmin_, this%cfg%jmax_
+                do i = this%cfg%imin_, this%cfg%imax_
+                    if (this%mask(i, j, k) .eq. 1) cycle
+                    Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
+                    Ys = this%SC(i, j, k, 1:nspec)
+                    call this%get_cpmix(Ys, Tmix, Cp_mix)
+                    this%SRC(i, j, k, nspec1) = this%SRC(i, j, k, nspec1) + (this%Pthermo - this%Pthermo_old)/Cp_mix
+                end do
+            end do
+        end do
+
+    end subroutine pressure_source
+
+    subroutine update_pressure(this)
+        implicit none
+        class(finitechem), intent(inout) :: this
+
+        integer :: i, j, k
+
+        ! Save the old background pressure
+        this%Pthermo_old = this%Pthermo
+
+        ! Recompute mean density
+        call this%cfg%integrate(this%rho, integral=this%rhoint)
+        this%RHOmean = this%rhoint/this%cfg%vol_total
+
+        ! Update Pthermo
+        this%Pthermo = this%Pthermo*this%RHO_0/this%RHOmean
+
+        ! Update density
+        do k = this%cfg%kmino_, this%cfg%kmaxo_
+            do j = this%cfg%jmino_, this%cfg%jmaxo_
+                do i = this%cfg%imino_, this%cfg%imaxo_
+                    if (this%mask(i, j, k) .eq. 1) cycle
+
+                    this%RHO(i, j, k) = this%RHO(i, j, k)*(this%RHO_0/this%RHOmean)
+                end do
+            end do
+        end do
+
+    end subroutine update_pressure
+
 end module finitechem_class

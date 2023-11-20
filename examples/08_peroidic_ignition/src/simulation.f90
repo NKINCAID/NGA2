@@ -3,6 +3,7 @@ module simulation
     use precision, only: WP
     use geometry, only: cfg, Lx, Ly, Lz
     use ddadi_class, only: ddadi
+    use fft3d_class, only: fft3d
     use hypre_str_class, only: hypre_str
     use lowmach_class, only: lowmach
     use vdscalar_class, only: vdscalar
@@ -18,7 +19,8 @@ module simulation
     private
 
     !> Single low Mach flow solver and scalar solver and corresponding time tracker
-    type(hypre_str), public :: ps
+    ! type(hypre_str), public :: ps
+    type(fft3d), public :: ps
     type(ddadi), public :: vs, ss
     type(lowmach), public :: fs
     type(finitechem), public :: fc
@@ -61,87 +63,6 @@ module simulation
     real(WP) :: t1, t2, t3, t4, t5, t6, t7
 
 contains
-
-    !> Function that localizes y- boundary
-    function ym_locator(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (j .eq. pg%jmin) isIn = .true.
-    end function ym_locator
-
-    !> Function that localizes y+ boundary
-    function yp_locator(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (j .eq. pg%jmax + 1) isIn = .true.
-    end function yp_locator
-
-    !> Function that localizes the x+ boundary
-    function xm_locator(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (i .eq. pg%imin) isIn = .true.
-    end function xm_locator
-
-    !> Function that localizes the x+ boundary
-    function xp_locator(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (i .eq. pg%imax + 1) isIn = .true.
-    end function xp_locator
-
-    !> Function that localizes jet at -x
-    function xm_scalar(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (i .eq. pg%imin - 1) isIn = .true.
-    end function xm_scalar
-
-    !> Function that localizes the right domain boundary
-    ! function xp_scalar(pg, i, j, k) result(isIn)
-    !     use pgrid_class, only: pgrid
-    !     class(pgrid), intent(in) :: pg
-    !     integer, intent(in) :: i, j, k
-    !     logical :: isIn
-    !     isIn = .false.
-    !     ! if (i .ge. pg%imax) isIn = .true.
-    !     if (i .eq. pg%imax) isIn = .true.
-    ! end function xp_scalar
-
-    !> Function that localizes y- boundary
-    function ym_scalar(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (j .eq. pg%jmin - 1) isIn = .true.
-    end function ym_scalar
-
-    !> Function that localizes y+ boundary
-    ! function yp_scalar(pg, i, j, k) result(isIn)
-    !     use pgrid_class, only: pgrid
-    !     class(pgrid), intent(in) :: pg
-    !     integer, intent(in) :: i, j, k
-    !     logical :: isIn
-    !     isIn = .false.
-    !     if (j .eq. pg%jmax) isIn = .true.
-    ! end function yp_scalar
 
     !> Initialize a double delta field
     subroutine ignition_doubledelta()
@@ -288,7 +209,7 @@ contains
         do k = kmin, kmax
             do j = jmin, jmax
                 do i = imin, imax
-                    tmp_sc(i, j, 1) = (tmp_sc(i, j, 1) - tmp_sc_min)/(tmp_sc_max - tmp_sc_min)*1.3_WP
+                    tmp_sc(i, j, 1) = (tmp_sc(i, j, 1) - tmp_sc_min)/(tmp_sc_max - tmp_sc_min)*0.6_WP + 0.7_WP
                 end do
             end do
         end do
@@ -317,16 +238,15 @@ contains
             ! Assign constant viscosity
             ! call param_read('Dynamic viscosity', visc); fs%visc = visc
             ! Use slip on the sides with correction
-            call fs%add_bcond(name='ym_outflow', type=neumann, face='y', dir=-1, canCorrect=.True., locator=ym_locator)
-            call fs%add_bcond(name='yp_outflow', type=neumann, face='y', dir=+1, canCorrect=.True., locator=yp_locator)
-            ! Outflow on the right
-            call fs%add_bcond(name='xm_outflow', type=neumann, face='x', dir=-1, canCorrect=.True., locator=xm_locator)
-            call fs%add_bcond(name='xp_outflow', type=neumann, face='x', dir=+1, canCorrect=.True., locator=xp_locator)
+
             ! ! Configure pressure solver
-            ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
-            ps%maxlevel = 18
-            call param_read('Pressure iteration', ps%maxit)
-            call param_read('Pressure tolerance', ps%rcvg)
+            ! ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
+            ! ps%maxlevel = 18
+            ! call param_read('Pressure iteration', ps%maxit)
+            ! call param_read('Pressure tolerance', ps%rcvg)
+
+            ps = fft3d(cfg=cfg, name='Pressure', nst=7)
+
             ! Configure implicit velocity solver
             vs = ddadi(cfg=cfg, name='Velocity', nst=7)
             ! Setup the solver
@@ -340,10 +260,6 @@ contains
             ! Create scalar solver
             fc = finitechem(cfg=cfg, scheme=quick, name='fc')
             ! Outflow on the right
-            call fc%add_bcond(name='xm_outflow', type=neumann, locator=xm_scalar, dir='-x')
-            call fc%add_bcond(name='xp_outflow', type=neumann, locator=xp_locator, dir='+x')
-            call fc%add_bcond(name='ym_outflow', type=neumann, locator=ym_scalar, dir='-y')
-            call fc%add_bcond(name='yp_outflow', type=neumann, locator=yp_locator, dir='+y')
             ! Assign constant diffusivity
             ! call param_read('Dynamic diffusivity', diffusivity)
             ! fc%diff = diffusivity
@@ -380,9 +296,9 @@ contains
             call param_read('Max cfl number', time%cflmax)
             call param_read('Max time', time%tmax)
             call param_read('Max iterations', time%nmax)
+            call param_read('Subiterations', time%itmax)
 
             time%dt = time%dtmax
-            time%itmax = 5
         end block initialize_timetracker
 
         ! Initialize our mixture fraction field
@@ -407,19 +323,19 @@ contains
 
             ! Find the x bounds of the region to be initialized
             imin = fc%cfg%imin
-            do i = fc%cfg%imin, fc%cfg%imax
-                if (fc%cfg%xm(i) .gt. fc%cfg%x(fc%cfg%imin) + L_buffer) then
-                    imin = i
-                    exit
-                end if
-            end do
+            ! do i = fc%cfg%imin, fc%cfg%imax
+            !     if (fc%cfg%xm(i) .gt. fc%cfg%x(fc%cfg%imin) + L_buffer) then
+            !         imin = i
+            !         exit
+            !     end if
+            ! end do
             imax = fc%cfg%imax
-            do i = fc%cfg%imax, fc%cfg%imin, -1
-                if (fc%cfg%xm(i) .lt. fc%cfg%x(fc%cfg%imax + 1) - L_buffer) then
-                    imax = i
-                    exit
-                end if
-            end do
+            ! do i = fc%cfg%imax, fc%cfg%imin, -1
+            !     if (fc%cfg%xm(i) .lt. fc%cfg%x(fc%cfg%imax + 1) - L_buffer) then
+            !         imax = i
+            !         exit
+            !     end if
+            ! end do
 
             ! Find the y bounds of the region to be initialized
             jmin = fc%cfg%jmin
@@ -430,28 +346,28 @@ contains
                 end if
             end do
             jmax = fc%cfg%jmax
-            do j = fc%cfg%jmax, fc%cfg%jmin, -1
-                if (fc%cfg%ym(j) .lt. fc%cfg%y(fc%cfg%jmax + 1) - L_buffer) then
-                    jmax = j
-                    exit
-                end if
-            end do
+            ! do j = fc%cfg%jmax, fc%cfg%jmin, -1
+            !     if (fc%cfg%ym(j) .lt. fc%cfg%y(fc%cfg%jmax + 1) - L_buffer) then
+            !         jmax = j
+            !         exit
+            !     end if
+            ! end do
 
             ! Find the z bounds of the region to be initialized
             kmin = fc%cfg%kmin
-            do k = fc%cfg%kmin, fc%cfg%kmax
-                if (fc%cfg%zm(k) .gt. fc%cfg%z(fc%cfg%kmin) + L_buffer) then
-                    kmin = k
-                    exit
-                end if
-            end do
+            ! do k = fc%cfg%kmin, fc%cfg%kmax
+            !     if (fc%cfg%zm(k) .gt. fc%cfg%z(fc%cfg%kmin) + L_buffer) then
+            !         kmin = k
+            !         exit
+            !     end if
+            ! end do
             kmax = fc%cfg%kmax
-            do k = fc%cfg%kmax, fc%cfg%kmin, -1
-                if (fc%cfg%zm(k) .lt. fc%cfg%z(fc%cfg%kmax + 1) - L_buffer) then
-                    kmax = k
-                    exit
-                end if
-            end do
+            ! do k = fc%cfg%kmax, fc%cfg%kmin, -1
+            !     if (fc%cfg%zm(k) .lt. fc%cfg%z(fc%cfg%kmax + 1) - L_buffer) then
+            !         kmax = k
+            !         exit
+            !     end if
+            ! end do
             nx = imax - imin + 1
             ny = jmax - jmin + 1
             nz = kmax - kmin + 1
@@ -478,11 +394,11 @@ contains
             do k = fc%cfg%kmino_, fc%cfg%kmaxo_
                 do j = fc%cfg%jmino_, fc%cfg%jmaxo_
                     do i = fc%cfg%imino_, fc%cfg%imaxo_
-                     if (i .ge. imin .and. i .le. imax .and. j .ge. jmin .and. j .le. jmax .and. k .ge. kmin .and. k .le. kmax) then
-                            continue
-                        else
-                            tmp_sc(i, j, k) = 0.0_WP
-                        end if
+                        !  if (i .ge. imin .and. i .le. imax .and. j .ge. jmin .and. j .le. jmax .and. k .ge. kmin .and. k .le. kmax) then
+                        !     continue
+                        ! else
+                        ! tmp_sc(i, j, k) = 0.0_WP
+                        ! end if
                         ! Set mass fraction of fuel
                         fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
                                                    (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
@@ -506,6 +422,11 @@ contains
             call fc%get_density()
             call fc%get_viscosity()
             call fc%get_diffusivity()
+
+            call fc%cfg%integrate(fc%rho, integral=fc%rhoint)
+            fc%RHO_0 = fc%rhoint/fc%cfg%vol_total
+
+            print *, "RHO_0 =", fc%RHO_0
             ! print *, maxval(fc%visc), minval(fc%visc)
 
             call fc%get_max()
@@ -586,10 +507,11 @@ contains
             call mfile%add_column(fs%Vmax, 'Vmax')
             call mfile%add_column(fs%Wmax, 'Wmax')
             call mfile%add_column(fs%Pmax, 'Pmax')
+            call mfile%add_column(fc%Pthermo, 'Pthermo')
             ! call mfile%add_column(fc%SCmax, 'Zmax')
             ! call mfile%add_column(fc%SCmin, 'Zmin')
-            call mfile%add_column(fc%rhomax, 'RHOmax')
-            call mfile%add_column(fc%rhomin, 'RHOmin')
+            call mfile%add_column(fc%SCmax(nspec + 1), 'Tmax')
+
             call mfile%add_column(fs%divmax, 'Maximum divergence')
             call mfile%add_column(fs%psolv%it, 'Pressure iteration')
             call mfile%add_column(fs%psolv%rerr, 'Pressure error')
@@ -655,7 +577,7 @@ contains
             ! This is where time-dpt Dirichlet would be enforced
             ! t1 = parallel_time()
             call fc%react(time%dt)
-            call fc%diffusive_source(time%dt)
+            ! call fc%diffusive_source(time%dt)
             ! t2 = parallel_time()
             ! Perform sub-iterations
             do while (time%it .le. time%itmax)
@@ -667,6 +589,7 @@ contains
                     integer :: nsc
 
                     fc%SRC = 0.0_WP
+                    call fc%pressure_source()
                     call fc%diffusive_source(time%dt)
 
                     ! Build mid-time scalar
@@ -676,7 +599,7 @@ contains
                     do nsc = 1, fc%nscalar
                         ! ============= SCALAR SOLVER =======================
                         ! Assemble explicit residual
-                       resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc)+ fc%rho * fc%SRCchem(:,:,:,nsc) + fc%SRC(:,:,:,nsc)
+                       resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho * fc%SRCchem(:,:,:,nsc) + fc%SRC(:,:,:,nsc)
                     end do
                     ! resSC = -2.0_WP*(fc%SC - fc%SCold) + time%dt*resSC
 
@@ -698,7 +621,7 @@ contains
                 ! t6 = parallel_time()
                 call fc%get_diffusivity()
                 ! t7 = parallel_time()
-
+                call fc%update_pressure()
                 ! print *, " "
                 ! print *, "================================================="
                 ! print *, "Reaction mapping    : ", t2 - t1
