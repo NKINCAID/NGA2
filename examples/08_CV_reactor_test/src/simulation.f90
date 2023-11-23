@@ -3,6 +3,7 @@ module simulation
     use precision, only: WP
     use geometry, only: cfg, Lx, Ly, Lz
     use ddadi_class, only: ddadi
+    use fft3d_class, only: fft3d
     use hypre_str_class, only: hypre_str
     use lowmach_class, only: lowmach
     use vdscalar_class, only: vdscalar
@@ -18,7 +19,8 @@ module simulation
     private
 
     !> Single low Mach flow solver and scalar solver and corresponding time tracker
-    type(hypre_str), public :: ps
+    ! type(hypre_str), public :: ps
+    type(fft3d), public :: ps
     type(ddadi), public :: vs, ss
     type(lowmach), public :: fs
     type(finitechem), public :: fc
@@ -38,7 +40,7 @@ module simulation
     real(WP), dimension(:, :, :), allocatable :: Ui, Vi, Wi
     real(WP), dimension(:, :, :, :), allocatable :: SR
     real(WP), dimension(:, :, :, :, :), allocatable :: gradU
-    real(WP), dimension(:, :, :), allocatable :: tmp_sc
+    real(WP), dimension(:, :, :), allocatable :: tmp_sc, tmp_U, tmp_V
     real(WP), dimension(:, :, :, :), allocatable :: resSC
 
     !> Fluid, forcing, and particle parameters
@@ -59,80 +61,8 @@ module simulation
     integer :: imin, imax, jmin, jmax, kmin, kmax, nx, ny, nz
 
     real(WP) :: t1, t2, t3, t4, t5, t6, t7
-    real(WP) :: int_RP = 0.0_WP
 
 contains
-
-    !> Function that localizes y- boundary
-    function ym_locator(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (j .eq. pg%jmin) isIn = .true.
-    end function ym_locator
-
-    !> Function that localizes y+ boundary
-    function yp_locator(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (j .eq. pg%jmax + 1) isIn = .true.
-    end function yp_locator
-
-    !> Function that localizes the x+ boundary
-    function xm_locator(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (i .eq. pg%imin) isIn = .true.
-    end function xm_locator
-
-    !> Function that localizes the x+ boundary
-    function xp_locator(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (i .eq. pg%imax + 1) isIn = .true.
-    end function xp_locator
-
-    !> Function that localizes jet at -x
-    function xm_scalar(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (i .eq. pg%imin - 1) isIn = .true.
-    end function xm_scalar
-
-    !> Function that localizes the right domain boundary
-    ! function xp_scalar(pg, i, j, k) result(isIn)
-    !     use pgrid_class, only: pgrid
-    !     class(pgrid), intent(in) :: pg
-    !     integer, intent(in) :: i, j, k
-    !     logical :: isIn
-    !     isIn = .false.
-    !     ! if (i .ge. pg%imax) isIn = .true.
-    !     if (i .eq. pg%imax) isIn = .true.
-    ! end function xp_scalar
-
-    !> Function that localizes y- boundary
-    function ym_scalar(pg, i, j, k) result(isIn)
-        use pgrid_class, only: pgrid
-        class(pgrid), intent(in) :: pg
-        integer, intent(in) :: i, j, k
-        logical :: isIn
-        isIn = .false.
-        if (j .eq. pg%jmin - 1) isIn = .true.
-    end function ym_scalar
 
     !> Initialization of problem solver
     subroutine simulation_init
@@ -141,24 +71,23 @@ contains
 
         ! Create a low-Mach flow solver with bconds
         create_velocity_solver: block
-            use hypre_str_class, only: pcg_pfmg
-            use lowmach_class, only: dirichlet, neumann, clipped_neumann, slip
+            use hypre_str_class, only: pcg_pfmg, smg
+            use lowmach_class, only: dirichlet, clipped_neumann, slip, neumann
             real(WP) :: visc
             ! Create flow solver
             fs = lowmach(cfg=cfg, name='Variable density low Mach NS')
             ! Assign constant viscosity
             ! call param_read('Dynamic viscosity', visc); fs%visc = visc
             ! Use slip on the sides with correction
-            call fs%add_bcond(name='ym_outflow', type=neumann, face='y', dir=-1, canCorrect=.False., locator=ym_locator)
-            call fs%add_bcond(name='yp_outflow', type=neumann, face='y', dir=+1, canCorrect=.False., locator=yp_locator)
-            ! Outflow on the right
-            call fs%add_bcond(name='xm_outflow', type=neumann, face='x', dir=-1, canCorrect=.False., locator=xm_locator)
-            call fs%add_bcond(name='xp_outflow', type=neumann, face='x', dir=+1, canCorrect=.False., locator=xp_locator)
+
             ! ! Configure pressure solver
-            ps = hypre_str(cfg=cfg, name='Pressure', method=pcg_pfmg, nst=7)
-            ps%maxlevel = 18
-            call param_read('Pressure iteration', ps%maxit)
-            call param_read('Pressure tolerance', ps%rcvg)
+            ! ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
+            ! ps%maxlevel = 18
+            ! call param_read('Pressure iteration', ps%maxit)
+            ! call param_read('Pressure tolerance', ps%rcvg)
+
+            ps = fft3d(cfg=cfg, name='Pressure', nst=7)
+
             ! Configure implicit velocity solver
             vs = ddadi(cfg=cfg, name='Velocity', nst=7)
             ! Setup the solver
@@ -171,7 +100,7 @@ contains
             real(WP) :: diffusivity
             ! Create scalar solver
             fc = finitechem(cfg=cfg, scheme=quick, name='fc')
-
+            ! Outflow on the right
             ! Assign constant diffusivity
             ! call param_read('Dynamic diffusivity', diffusivity)
             ! fc%diff = diffusivity
@@ -199,6 +128,10 @@ contains
             allocate (resSC(fc%cfg%imino_:fc%cfg%imaxo_, fc%cfg%jmino_:fc%cfg%jmaxo_, fc%cfg%kmino_:fc%cfg%kmaxo_, fc%nscalar))
             ! Temporary scalar field for initialization
             allocate (tmp_sc(fc%cfg%imin:fc%cfg%imax, fc%cfg%jmin:fc%cfg%jmax, fc%cfg%kmin:fc%cfg%kmax))
+
+            allocate (tmp_U(fs%cfg%imin:fs%cfg%imax, fs%cfg%jmin:fs%cfg%jmax, fs%cfg%kmin:fs%cfg%kmax))
+            allocate (tmp_V(fs%cfg%imin:fs%cfg%imax, fs%cfg%jmin:fs%cfg%jmax, fs%cfg%kmin:fs%cfg%kmax))
+
         end block allocate_work_arrays
 
         ! Initialize time tracker with 2 subiterations
@@ -208,9 +141,9 @@ contains
             call param_read('Max cfl number', time%cflmax)
             call param_read('Max time', time%tmax)
             call param_read('Max iterations', time%nmax)
+            call param_read('Sub iterations', time%itmax)
 
             time%dt = time%dtmax
-            time%itmax = 5
         end block initialize_timetracker
 
         ! Initialize our mixture fraction field
@@ -230,9 +163,6 @@ contains
 
             call param_read('Pressure', fc%Pthermo)
 
-            ! Read in the buffer region length
-            call param_read('Buffer region length', L_buffer)
-
             do i = 1, nspec
                 if (fc%SCname(i) .eq. fuel) then
                     isc_fuel = i
@@ -244,11 +174,18 @@ contains
                 end if
             end do
 
-            isc_T = nspec + 1
             tmp_sc = 1.0_WP
+
+            isc_T = nspec + 1
+            ! tmp_sc = 1.0_WP
             do k = fc%cfg%kmino_, fc%cfg%kmaxo_
                 do j = fc%cfg%jmino_, fc%cfg%jmaxo_
                     do i = fc%cfg%imino_, fc%cfg%imaxo_
+                        !  if (i .ge. imin .and. i .le. imax .and. j .ge. jmin .and. j .le. jmax .and. k .ge. kmin .and. k .le. kmax) then
+                        !     continue
+                        ! else
+                        ! tmp_sc(i, j, k) = 0.0_WP
+                        ! end if
                         ! Set mass fraction of fuel
                         fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
                                                    (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
@@ -262,6 +199,9 @@ contains
                                                  (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
                                                   (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
 
+                        ! else
+                        !     fc%SC(i, j, k, isc_n2) = 1.0_WP
+                        ! end if
                         fc%SC(i, j, k, isc_T) = T_init
                     end do
                 end do
@@ -269,6 +209,13 @@ contains
             call fc%get_density()
             call fc%get_viscosity()
             call fc%get_diffusivity()
+
+            call fc%cfg%integrate(fc%rho, integral=fc%rhoint)
+            fc%RHO_0 = fc%rhoint/fc%cfg%vol_total
+
+            fc%Pthermo_old = fc%Pthermo
+
+            print *, "RHO_0 =", fc%RHO_0
             ! print *, maxval(fc%visc), minval(fc%visc)
 
             call fc%get_max()
@@ -278,12 +225,15 @@ contains
         ! Initialize our velocity field
         initialize_velocity: block
             use lowmach_class, only: bcond
-            use random, only: random_normal
-            use mathtools, only: Pi
-            integer :: n, i, j, k
+            use parallel, only: MPI_REAL_WP
+            integer :: n, i, j, k, ierr
             type(bcond), pointer :: mybc
-            ! Zero initial field
-            fs%U = 0.0_WP; fs%V = 0.0_WP; fs%W = 0.0_WP
+            ! Velocity fluctuation, length scales, epsilon
+            real(WP) :: Ut, le, ld, epsilon
+
+            fs%U = 0.0_WP
+            fs%V = 0.0_WP
+            fs%W = 0.0_WP
 
             ! Set density from scalar
             fs%rho = fc%rho
@@ -349,11 +299,10 @@ contains
             call mfile%add_column(fs%Vmax, 'Vmax')
             call mfile%add_column(fs%Wmax, 'Wmax')
             call mfile%add_column(fs%Pmax, 'Pmax')
+            call mfile%add_column(fc%Pthermo, 'Pthermo')
             ! call mfile%add_column(fc%SCmax, 'Zmax')
             ! call mfile%add_column(fc%SCmin, 'Zmin')
-            call mfile%add_column(fc%rhomax, 'RHOmax')
-            call mfile%add_column(fc%rhomin, 'RHOmin')
-            call mfile%add_column(int_RP, 'Int(RP)')
+            call mfile%add_column(fc%SCmax(nspec + 1), 'Tmax')
 
             call mfile%add_column(fs%divmax, 'Maximum divergence')
             call mfile%add_column(fs%psolv%it, 'Pressure iteration')
@@ -411,7 +360,7 @@ contains
             fc%SCold = fc%SC
 
             ! Remember old velocity and momentum
-            fs%rhoold = fc%rho
+            fs%rhoold = fs%rho
             fs%Uold = fs%U; fs%rhoUold = fs%rhoU
             fs%Vold = fs%V; fs%rhoVold = fs%rhoV
             fs%Wold = fs%W; fs%rhoWold = fs%rhoW
@@ -420,6 +369,7 @@ contains
             ! This is where time-dpt Dirichlet would be enforced
             ! t1 = parallel_time()
             call fc%react(time%dt)
+            ! call fc%diffusive_source(time%dt)
             ! t2 = parallel_time()
             ! Perform sub-iterations
             do while (time%it .le. time%itmax)
@@ -429,6 +379,11 @@ contains
                 scalar_solver: block
                     use messager, only: die
                     integer :: nsc
+
+                    fc%SRC = 0.0_WP
+                    call fc%pressure_source()
+                    call fc%diffusive_source(time%dt)
+
                     ! Build mid-time scalar
                     fc%SC = 0.5_WP*(fc%SC + fc%SCold)
                     ! Explicit calculation of drhoSC/dt from scalar equation
@@ -436,9 +391,7 @@ contains
                     do nsc = 1, fc%nscalar
                         ! ============= SCALAR SOLVER =======================
                         ! Assemble explicit residual
-                        !    resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho*fc%SRCchem(:,:,:,nsc)
-                        resSC(:, :, :, nsc) = fc%rho*fc%SRCchem(:, :, :, nsc)
-
+                       resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho * fc%SRCchem(:,:,:,nsc) + fc%SRC(:,:,:,nsc)
                     end do
                     ! resSC = -2.0_WP*(fc%SC - fc%SCold) + time%dt*resSC
 
@@ -450,43 +403,6 @@ contains
                     ! Apply all other boundary conditions on the resulting field
                     call fc%apply_bcond(time%t, time%dt)
                 end block scalar_solver
-
-                test_fc: block
-                    use messager, only: die
-                    character(len=*), parameter :: FM1 = '(A10,A20, A20, A20, A20, A20)'
-                    character(len=*), parameter :: FM3 = '(A10,ES20.7,ES20.7,ES20.7,ES20.7,ES20.7)'
-                    character(len=*), parameter :: FM4 = '(A10,ES20.7,ES20.7,ES20.7)'
-
-                    real(WP), dimension(nspec + 1) :: sol, solold, delta, newsol, newdelta
-
-                    solold = fc%SCold(16, 16, 1, :)
-                    delta = fc%SRCchem(16, 16, 1, :)
-
-                    sol = solold + delta
-                    newsol = fc%SC(16, 16, 1, :)
-                    newdelta = fc%SC(16, 16, 1, :) - fc%SCold(16, 16, 1, :)
-                    print *, time%n, time%t
-                    !                 write (unit=*, fmt=FM1) " ", "Old", "New", "Delta", "SC Solve", "SC Solve Delta"
-                    !      write (unit=*, fmt=FM3) "Temp", solold(nspec + 1), sol(nspec + 1), delta(nspec + 1), newsol(nspec + 1), newdelta(nspec + 1)
-                    !                 write (unit=*, fmt=FM3) "O2", solold(sO2), sol(sO2), delta(sO2), newsol(sO2), newdelta(SO2)
-                    !                 write (unit=*, fmt=FM3) "HO2", solold(sHO2), sol(sHO2), delta(sHO2), newsol(sHO2), newdelta(sHO2)
-                    !  write (unit=*, fmt=FM3) "NXC12H26", solold(sNXC12H26), sol(sNXC12H26), delta(sNXC12H26), newsol(sNXC12H26), newdelta(sNXC12H26)
-                    !  write (unit=*, fmt=FM3) "SXC12H25", solold(sSXC12H25), sol(sSXC12H25), delta(sSXC12H25), newsol(sSXC12H25), newdelta(sSXC12H25)
-                    write (unit=*, fmt=FM1) " ", "resSC ", "New", "Delta", "SC Solve", "SC Solve Delta"
-         write (unit=*, fmt=FM3) "Temp", solold(nspec + 1), sol(nspec + 1), delta(nspec + 1), newsol(nspec + 1), newdelta(nspec + 1)
-                    write (unit=*, fmt=FM3) "O2", solold(sO2), sol(sO2), delta(sO2), newsol(sO2), newdelta(SO2)
-                    write (unit=*, fmt=FM3) "HO2", solold(sHO2), sol(sHO2), delta(sHO2), newsol(sHO2), newdelta(sHO2)
-     write (unit=*, fmt=FM3) "NXC12H26", solold(sNXC12H26), sol(sNXC12H26), delta(sNXC12H26), newsol(sNXC12H26), newdelta(sNXC12H26)
-     write (unit=*, fmt=FM3) "SXC12H25", solold(sSXC12H25), sol(sSXC12H25), delta(sSXC12H25), newsol(sSXC12H25), newdelta(sSXC12H25)
-                    print *, " "
-                    write (unit=*, fmt=FM1) " ", "rho ", "rho old", "delta rho", " ", " "
-                write (unit=*, fmt=FM4) "Density", fc%rho(16, 16, 1), fc%rhoold(16, 16, 1), fc%rho(16, 16, 1) - fc%rhoold(16, 16, 1)
-                    write (unit=*, fmt=FM4) "Viscosity", fc%visc(16, 16, 1)
-                    print *, "------------------------------------------------------------------------------"
-
-                    ! call die("Merp")
-                end block test_fc
-
                 ! =============================================
                 ! ============ UPDATE PROPERTIES ====================
                 ! t4 = parallel_time()
@@ -497,7 +413,7 @@ contains
                 ! t6 = parallel_time()
                 call fc%get_diffusivity()
                 ! t7 = parallel_time()
-
+                call fc%update_pressure()
                 ! print *, " "
                 ! print *, "================================================="
                 ! print *, "Reaction mapping    : ", t2 - t1
@@ -537,15 +453,15 @@ contains
                 fs%W = 2.0_WP*fs%W - fs%Wold + resW
 
                 ! Apply other boundary conditions and update momentum
-                call fs%rho_multiply()
                 call fs%apply_bcond(time%tmid, time%dtmid)
+                call fs%rho_multiply()
 
                 ! Solve Poisson equation
                 call fc%get_drhodt(dt=time%dt, drhodt=resRHO)
-                call fs%correct_mfr(drhodt=resRHO)
                 call fs%get_div(drhodt=resRHO)
+
+                print *, (fc%rho(16, 16, 1) - fc%rhoold(16, 16, 1))/time%dt, resRHO(16, 16, 1)
                 fs%psolv%rhs = -fs%cfg%vol*fs%div/time%dtmid
-                call cfg%integrate(A=fs%psolv%rhs, integral=int_RP)
                 fs%psolv%sol = 0.0_WP
                 call fs%psolv%solve()
                 call fs%shift_p(fs%psolv%sol)
@@ -576,6 +492,19 @@ contains
             call fs%get_max()
             call fc%get_max()
 
+            ! test: block
+            !     use messager, only: die
+
+            !     integer:: i, j, k
+            !     do k = fc%cfg%kmino_, fc%cfg%kmaxo_
+            !         do j = fc%cfg%jmino_, fc%cfg%jmaxo_
+            !             do i = fc%cfg%imino_, fc%cfg%imaxo_
+            ! print *, i, j, k, fc%rho(i, j, k), fc%SC(i, j, k, nspec + 1), fc%SC(i, j, k, sN2), fc%SC(i, j, k, sO2), fc%mask(i, j, k)
+            !             end do
+            !         end do
+            !     end do
+            !     call die("Merp")
+            ! end block test
             call mfile%write()
             call cflfile%write()
             call consfile%write()

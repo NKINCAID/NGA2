@@ -1,12 +1,12 @@
 # Parallelization
-Partition : 1 1 1
+Partition : 4 1 1
 
 # Mesh definition
-Lx : 1.0
-Ly : 1.0
-Lz : 0.01
-nx : 64
-ny : 64
+Lx : 0.01
+Ly : 0.01
+Lz : 0.001
+nx : 128
+ny : 128
 nz : 1
 
 # Inflow definition
@@ -16,8 +16,8 @@ Buffer region length : 0.0
 
 Forcing constant     : 1.0
 Velocity fluctuation : 0.1
-Energetic scale      : 0.3
-Dissipative scale    : 0.01
+Energetic scale      : 0.003
+Dissipative scale    : 0.0001
 Dissipation          : 1e-3
 Pressure = 3.4e6
 

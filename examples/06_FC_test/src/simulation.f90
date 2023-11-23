@@ -655,7 +655,6 @@ contains
             ! This is where time-dpt Dirichlet would be enforced
             ! t1 = parallel_time()
             call fc%react(time%dt)
-            call fc%diffusive_source(time%dt)
             ! t2 = parallel_time()
             ! Perform sub-iterations
             do while (time%it .le. time%itmax)

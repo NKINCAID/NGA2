@@ -19,8 +19,11 @@ module multivdscalar_class
     integer, parameter, public :: neumann = 3                  !< Zero normal gradient
 
     ! List of available advection schemes for scalar transport
-    integer, parameter, public :: quick = 1                    !< Quick scheme
+    integer, parameter, public :: upwind = 0            !< First order upwind scheme
+    integer, parameter, public :: quick = 1             !< Quick scheme
+    integer, parameter, public :: bquick = 2            !< BQuick scheme
 
+    !> Boundary conditions for the incompressible solver
     !> Boundary conditions for the incompressible solver
     type :: bcond
         type(bcond), pointer :: next                          !< Linked list of bconds
@@ -77,6 +80,9 @@ module multivdscalar_class
         real(WP), dimension(:, :, :, :), allocatable :: divsc_x, divsc_y, divsc_z         !< Divergence for SC
         real(WP), dimension(:, :, :, :), allocatable :: grdsc_x, grdsc_y, grdsc_z         !< Scalar gradient for SC
         real(WP), dimension(:, :, :, :), allocatable :: itp_x, itp_y, itp_z           !< Second order interpolation for SC diffusivity
+        ! Bquick requires additional storage
+        real(WP), dimension(:, :, :, :), allocatable :: bitp_xp, bitp_yp, bitp_zp  !< Plus interpolation for SC  - backup
+        real(WP), dimension(:, :, :, :), allocatable :: bitp_xm, bitp_ym, bitp_zm  !< Minus interpolation for SC - backup
 
         ! Masking info for metric modification
         integer, dimension(:, :, :), allocatable :: mask        !< Integer array used for modifying SC metrics
@@ -94,8 +100,10 @@ module multivdscalar_class
         procedure :: add_bcond                                !< Add a boundary condition
         procedure :: get_bcond                                !< Get a boundary condition
         procedure :: apply_bcond                              !< Apply all boundary conditions
-        procedure :: init_metrics                             !< Initialize metrics
-        procedure :: adjust_metrics                           !< Adjust metrics
+        procedure, private :: init_metrics                             !< Initialize metrics
+        procedure, private :: adjust_metrics                           !< Adjust metrics
+        procedure :: metric_reset                           !< Reset adaptive metrics like bquick
+        procedure :: metric_adjust                          !< Adjust adaptive metrics like bquick
         procedure :: get_drhoSCdt                             !< Calculate drhoSC/dt
         procedure :: get_max                                  !< Calculate maximum field values
         procedure :: get_int                                  !< Calculate integral field values
@@ -153,15 +161,29 @@ contains
         ! Prepare advection scheme
         self%scheme = scheme
         select case (self%scheme)
+        case (upwind)
+            ! Check current overlap
+            if (self%cfg%no .lt. 1) call die('[multiscalar constructor] Scalar transport scheme requires larger overlap')
+            ! Set interpolation stencil sizes
+            self%nst = 1
+            self%stp1 = -(self%nst + 1)/2; self%stp2 = self%nst + self%stp1 - 1
+            self%stm1 = -(self%nst - 1)/2; self%stm2 = self%nst + self%stm1 - 1
         case (quick)
             ! Check current overlap
-            if (self%cfg%no .lt. 2) call die('[multiscalar constructor] multivdscalar transport scheme requires larger overlap')
+            if (self%cfg%no .lt. 2) call die('[multiscalar constructor] Scalar transport scheme requires larger overlap')
+            ! Set interpolation stencil sizes
+            self%nst = 3
+            self%stp1 = -(self%nst + 1)/2; self%stp2 = self%nst + self%stp1 - 1
+            self%stm1 = -(self%nst - 1)/2; self%stm2 = self%nst + self%stm1 - 1
+        case (bquick)
+            ! Check current overlap
+            if (self%cfg%no .lt. 2) call die('[multiscalar constructor] Scalar transport scheme requires larger overlap')
             ! Set interpolation stencil sizes
             self%nst = 3
             self%stp1 = -(self%nst + 1)/2; self%stp2 = self%nst + self%stp1 - 1
             self%stm1 = -(self%nst - 1)/2; self%stm2 = self%nst + self%stm1 - 1
         case default
-            call die('[multiscalar constructor] Unknown multivdscalar transport scheme selected')
+            call die('[multiscalar constructor] Unknown scalar transport scheme selected')
         end select
 
         ! Prepare default metrics
@@ -230,7 +252,11 @@ allocate (this%itp_z(-1:0, this%cfg%imin_:this%cfg%imax_ + 1, this%cfg%jmin_:thi
       allocate(this%itpsc_zm(this%stm1:this%stm2,this%cfg%imin_:this%cfg%imax_+1,this%cfg%jmin_:this%cfg%jmax_+1,this%cfg%kmin_:this%cfg%kmax_+1)) !< Z-face-centered
         ! Create scalar interpolation coefficients to cell faces
         select case (this%scheme)
-        case (quick)
+        case (upwind)
+            this%itpsc_xp = 1.0_WP; this%itpsc_xm = 1.0_WP
+            this%itpsc_yp = 1.0_WP; this%itpsc_ym = 1.0_WP
+            this%itpsc_zp = 1.0_WP; this%itpsc_zm = 1.0_WP
+        case (quick, bquick)
             do k = this%cfg%kmin_, this%cfg%kmax_ + 1
                 do j = this%cfg%jmin_, this%cfg%jmax_ + 1
                     do i = this%cfg%imin_, this%cfg%imax_ + 1
@@ -390,7 +416,16 @@ allocate (this%itp_z(-1:0, this%cfg%imin_:this%cfg%imax_ + 1, this%cfg%jmin_:thi
 
         ! Adjust metrics based on mask array
         call this%adjust_metrics()
-
+        ! Bquick needs to remember the quick coefficients
+        select case (this%scheme)
+        case (bquick)
+         allocate(this%bitp_xp(this%stp1:this%stp2,this%cfg%imin_:this%cfg%imax_+1,this%cfg%jmin_:this%cfg%jmax_+1,this%cfg%kmin_:this%cfg%kmax_+1)); this%bitp_xp = this%itpsc_xp
+         allocate(this%bitp_xm(this%stm1:this%stm2,this%cfg%imin_:this%cfg%imax_+1,this%cfg%jmin_:this%cfg%jmax_+1,this%cfg%kmin_:this%cfg%kmax_+1)); this%bitp_xm = this%itpsc_xm
+         allocate(this%bitp_yp(this%stp1:this%stp2,this%cfg%imin_:this%cfg%imax_+1,this%cfg%jmin_:this%cfg%jmax_+1,this%cfg%kmin_:this%cfg%kmax_+1)); this%bitp_yp = this%itpsc_yp
+         allocate(this%bitp_ym(this%stm1:this%stm2,this%cfg%imin_:this%cfg%imax_+1,this%cfg%jmin_:this%cfg%jmax_+1,this%cfg%kmin_:this%cfg%kmax_+1)); this%bitp_ym = this%itpsc_ym
+         allocate(this%bitp_zp(this%stp1:this%stp2,this%cfg%imin_:this%cfg%imax_+1,this%cfg%jmin_:this%cfg%jmax_+1,this%cfg%kmin_:this%cfg%kmax_+1)); this%bitp_zp = this%itpsc_zp
+         allocate(this%bitp_zm(this%stm1:this%stm2,this%cfg%imin_:this%cfg%imax_+1,this%cfg%jmin_:this%cfg%jmax_+1,this%cfg%kmin_:this%cfg%kmax_+1)); this%bitp_zm = this%itpsc_zm
+        end select
         ! Prepare implicit solver if it had been provided
         if (present(implicit_solver)) then
 
@@ -774,6 +809,50 @@ allocate (this%itp_z(-1:0, this%cfg%imin_:this%cfg%imax_ + 1, this%cfg%jmin_:thi
 
     end subroutine solve_implicit
 
+    !> Metric resetting for adaptive discretization like bquick
+    subroutine metric_reset(this)
+        implicit none
+        class(multivdscalar), intent(inout) :: this
+        select case (this%scheme)
+        case (bquick)
+            this%itpsc_xp = this%bitp_xp
+            this%itpsc_xm = this%bitp_xm
+            this%itpsc_yp = this%bitp_yp
+            this%itpsc_ym = this%bitp_ym
+            this%itpsc_zp = this%bitp_zp
+            this%itpsc_zm = this%bitp_zm
+        end select
+    end subroutine metric_reset
+
+    !> Adjust adaptive metrics like bquick
+    subroutine metric_adjust(this, SC, flag)
+        implicit none
+        class(multivdscalar), intent(inout) :: this
+        real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:, 1:), intent(in) :: SC   !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_,1:nscalar)
+        logical, dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in) :: flag !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
+        integer :: i, j, k
+        select case (this%scheme)
+        case (bquick)
+            do k = this%cfg%kmin_, this%cfg%kmax_ + 1
+                do j = this%cfg%jmin_, this%cfg%jmax_ + 1
+                    do i = this%cfg%imin_, this%cfg%imax_ + 1
+                        if (any(flag(i - 1:i, j, k))) then
+                            this%itpsc_xp(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
+                            this%itpsc_xm(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
+                        end if
+                        if (any(flag(i, j - 1:j, k))) then
+                            this%itpsc_yp(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
+                            this%itpsc_ym(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
+                        end if
+                        if (any(flag(i, j, k - 1:k))) then
+                            this%itpsc_zp(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
+                            this%itpsc_zm(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
+                        end if
+                    end do
+                end do
+            end do
+        end select
+    end subroutine metric_adjust
     !> Print out info for multivdscalar solver
     subroutine multiscalar_print(this)
         use, intrinsic :: iso_fortran_env, only: output_unit

@@ -3,10 +3,10 @@ import numpy as np
 
 gas = ct.Solution('cti/YAO_reduced.cti')
 
-gas.set_equivalence_ratio(1.0, "NXC12H26", "O2:1.0,N2:3.76")
+gas.set_equivalence_ratio(1.3, "NXC12H26", "O2:1.0,N2:3.76")
 gas.TP = 750.0, 3.4e6
 
-r = ct.IdealGasConstPressureReactor(gas)
+r = ct.IdealGasReactor(gas)
 
 
 sim = ct.ReactorNet([r])
@@ -17,7 +17,7 @@ states.append(r.thermo.state)
 time = 0.0
 dt = 1.0e-5
 
-for i in range(1,300):
+for i in range(1,100):
     sim.advance(time + dt)
 
     states.append(r.thermo.state)
@@ -33,6 +33,7 @@ for i in range(1,300):
         delta = (states[i].Y[nsc] - states[i-1].Y[nsc])
         if gas.species_names[nsc] in specs:
             print('{:20} | {:20.7e} | {:20.7e} | {:20.7e}'.format(gas.species_names[nsc], states[i-1].Y[nsc], states[i].Y[nsc], delta))
+    print(states[i].P)
     print('----------------------------------------------------------------------------------------------------\n\n')
 
 

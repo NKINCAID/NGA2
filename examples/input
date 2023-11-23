@@ -1,23 +1,23 @@
 # Parallelization
-Partition : 1 1 1
+Partition : 4 1 1
 
 # Mesh definition
-Lx : 1.0
-Ly : 1.0
-Lz : 0.01
-nx : 32
-ny : 32
+Lx : 0.01
+Ly : 0.01
+Lz : 0.001
+nx : 128
+ny : 128
 nz : 1
 
 # Inflow definition
-ks/ko : 1.5
+ks/ko : 3
 kc/ks : 2
-Buffer region length : 0.25
+Buffer region length : 0.0
 
 Forcing constant     : 1.0
 Velocity fluctuation : 0.1
-Energetic scale      : 0.3
-Dissipative scale    : 0.01
+Energetic scale      : 0.003
+Dissipative scale    : 0.0001
 Dissipation          : 1e-3
 Pressure = 3.4e6
 
@@ -25,10 +25,11 @@ Pressure = 3.4e6
 Max timestep size :	1e-5
 Max cfl number    :	0.8
 Max time          : 0.01
-Max iterations    : 1
+Max iterations    : 1000
+Subiterations     : 5
 
 # Pressure solver
-Pressure tolerance : 1e-6
+Pressure tolerance : 1e-10
 Pressure iteration : 100
 
 # Ensight output
@@ -39,3 +40,5 @@ Fuel : NXC12H26
 Oxidizer : air
 
 T init : 750
+
+Boundary condition : periodic
