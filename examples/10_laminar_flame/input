@@ -1,0 +1,64 @@
+# Parallelization
+Partition : 1 1 1
+
+# Mesh definition
+Lx : 0.03
+Ly : 0.001
+Lz : 0.001
+nx : 256
+ny : 1
+nz : 1
+
+# Inflow definition
+ks/ko : 3
+kc/ks : 2
+Buffer region length : 0.0
+
+Forcing constant     : 1.0
+Velocity fluctuation : 0.1
+Energetic scale      : 0.003
+Dissipative scale    : 0.0001
+Dissipation          : 1e-3
+Pressure = 3.4e6
+
+# Time integration
+Max timestep size :	1e-5
+Max cfl number    :	0.8
+Max time          : 1
+Max iterations    : 10000
+Sub iterations     : 5
+
+# Pressure solver
+Pressure tolerance : 1e-10
+Pressure iteration : 100
+
+# Ensight output
+Ensight output period : 1e-4
+
+# U velocity : 0.143032
+U velocity : 0.0
+
+
+Use reactions : .true.
+
+Flame location : 0.8 
+
+Tin : 300
+Tb : 2363.78
+
+Inflow N2            :    7.1880666e-01
+Inflow O2            :    2.1835943e-01
+Inflow NXC12H26      :    6.2833903e-02
+
+Burnt N2            :    7.1822912e-01
+Burnt O             :    2.6739737e-05
+Burnt H2            :    1.2587155e-04
+Burnt H             :    3.4117547e-06
+Burnt OH            :    8.5291588e-04
+Burnt H2O           :    8.6823927e-02
+Burnt H2O2          :    1.9087852e-07
+Burnt O2            :    1.7106285e-03
+Burnt HO2           :    7.4788083e-07
+Burnt CO2           :    1.8346275e-01
+Burnt CO            :    8.7636863e-03
+Burnt HCO           :    5.1648695e-09
