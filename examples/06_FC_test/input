@@ -1,10 +1,10 @@
 # Parallelization
-Partition : 4 1 1
+Partition : 1 1 1
 
 # Mesh definition
-Lx : 1.0
-Ly : 1.0
-Lz : 0.01
+Lx : 0.01
+Ly : 0.01
+Lz : 0.001
 nx : 128
 ny : 128
 nz : 1
@@ -12,7 +12,7 @@ nz : 1
 # Inflow definition
 ks/ko : 3
 kc/ks : 2
-Buffer region length : 0.25
+Buffer region length : 0.0025
 
 Forcing constant     : 1.0
 Velocity fluctuation : 0.1

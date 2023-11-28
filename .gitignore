@@ -38,6 +38,8 @@ stat/
 *.grid
 *.data
 
+*.mp4
+
 # Ignore all content of examples
 examples/*/*
 !examples/*/GNUmakefile

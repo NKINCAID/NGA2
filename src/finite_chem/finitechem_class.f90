@@ -474,6 +474,9 @@ contains
                else
                   Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
                   Ys = this%SC(i, j, k, 1:nspec)
+                  Ys = min(max(Ys, 0.0_WP), 1.0_WP)
+                  Ys = Ys/sum(Ys)
+
                   call this%get_Wmix(Ys, Wmix)
                   this%rho(i, j, k) = this%Pthermo*Wmix/(Rcst*Tmix)
                end if
@@ -577,6 +580,8 @@ contains
                ! ---- Thermal diffusivity ---- !
                ! Mixture molar mass and temperature
                Ys = this%SC(i, j, k, 1:nspec)
+               Ys = min(max(Ys, 0.0_WP), 1.0_WP)
+               Ys = Ys/sum(Ys)
                call this%get_Wmix(Ys, Wmix)
                Tmix = min(max(this%SC(i, j, k, nspec1), T_min), T_max)
 

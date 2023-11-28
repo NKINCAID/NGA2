@@ -466,10 +466,11 @@ contains
                do nsc = 1, fc%nscalar
                   ! Assemble explicit residual
                   resSC(:, :, :, nsc) = time%dt*resSC(:, :, :, nsc) - 2.0_WP*fc%rho*fc%SC(:, :, :, nsc) + (fc%rho + fc%rhoold)*fc%SCold(:, :, :, nsc) + fc%rho*fc%SRCchem(:, :, :, nsc) + fc%SRC(:, :, :, nsc)
+                  SCtmp(:, :, :, nsc) = 2.0_WP*fc%SC(:, :, :, nsc) - fc%SCold(:, :, :, nsc) + resSC(:, :, :, nsc)/fc%rho
+
                end do
 
                ! Apply it to get explicit scalar prediction
-               SCtmp = 2.0_WP*fc%SC - fc%SCold + resSC
 
                do k = fc%cfg%kmino_, fc%cfg%kmaxo_
                   do j = fc%cfg%jmino_, fc%cfg%jmaxo_

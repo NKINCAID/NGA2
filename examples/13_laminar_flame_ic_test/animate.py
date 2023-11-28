@@ -66,7 +66,7 @@ print('laminar flame thickness = ', thickness)
 
 files = os.listdir('ensight/vdjet/extract/')
 
-files = [val for val in files if "extract" in val]
+files = [val for val in files if "test" in val]
 files.sort()
 
 
