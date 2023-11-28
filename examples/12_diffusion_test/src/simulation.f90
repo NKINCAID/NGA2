@@ -19,8 +19,8 @@ module simulation
    private
 
    !> Single low Mach flow solver and scalar solver and corresponding time tracker
-   type(hypre_str), public :: ps
-   ! type(fft3d), public :: ps
+   ! type(hypre_str), public :: ps
+   type(fft3d), public :: ps
    type(ddadi), public :: vs, ss
    type(lowmach), public :: fs
    type(finitechem), public :: fc
@@ -62,51 +62,11 @@ module simulation
 
    real(WP) :: t1, t2, t3, t4, t5, t6, t7
 
-   logical :: use_reactions
-
-   real(WP) :: Tinit, Tb, Uin
-
-   real(WP) :: loc, xloc
-
-   real(WP), dimension(:), allocatable :: Yinit, Yb
 contains
 
-   !> Function that localizes the x+ boundary
-   function xp_locator(pg, i, j, k) result(isIn)
-      use pgrid_class, only: pgrid
-      class(pgrid), intent(in) :: pg
-      integer, intent(in) :: i, j, k
-      logical :: isIn
-      isIn = .false.
-      if (i .eq. pg%imax + 1) isIn = .true.
-   end function xp_locator
-
-   !> Function that localizes jet at -x
-   function xm_locator(pg, i, j, k) result(isIn)
-      use pgrid_class, only: pgrid
-      class(pgrid), intent(in) :: pg
-      integer, intent(in) :: i, j, k
-      real(WP) :: radius
-      logical :: isIn
-      isIn = .false.
-      ! Jet in yz plane
-      if (i .eq. pg%imin) isIn = .true.
-   end function xm_locator
-
-   !> Function that localizes jet at -x
-   function xmsc_locator(pg, i, j, k) result(isIn)
-      use pgrid_class, only: pgrid
-      class(pgrid), intent(in) :: pg
-      integer, intent(in) :: i, j, k
-      real(WP) :: radius
-      logical :: isIn
-      isIn = .false.
-      ! Jet in yz plane
-      if (i .eq. pg%imin - 1) isIn = .true.
-   end function xmsc_locator
    !> Initialization of problem solver
    subroutine simulation_init
-      use param, only: param_read, param_exists
+      use param, only: param_read
       implicit none
 
       ! Create a low-Mach flow solver with bconds
@@ -119,16 +79,14 @@ contains
          ! Assign constant viscosity
          ! call param_read('Dynamic viscosity', visc); fs%visc = visc
          ! Use slip on the sides with correction
-         call fs%add_bcond(name='inflow', type=dirichlet, face='x', dir=-1, canCorrect=.false., locator=xm_locator)
-         call fs%add_bcond(name='outflow', type=clipped_neumann, face='x', dir=+1, canCorrect=.True., locator=xp_locator)
 
          ! ! Configure pressure solver
-         ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
-         ps%maxlevel = 18
-         call param_read('Pressure iteration', ps%maxit)
-         call param_read('Pressure tolerance', ps%rcvg)
+         ! ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
+         ! ps%maxlevel = 18
+         ! call param_read('Pressure iteration', ps%maxit)
+         ! call param_read('Pressure tolerance', ps%rcvg)
 
-         ! ps = fft3d(cfg=cfg, name='Pressure', nst=7)
+         ps = fft3d(cfg=cfg, name='Pressure', nst=7)
 
          ! Configure implicit velocity solver
          vs = ddadi(cfg=cfg, name='Velocity', nst=7)
@@ -142,9 +100,6 @@ contains
          real(WP) :: diffusivity
          ! Create scalar solver
          fc = finitechem(cfg=cfg, scheme=bquick, name='fc')
-
-         call fc%add_bcond(name='inflow', type=dirichlet, locator=xmsc_locator)
-
          ! Outflow on the right
          ! Assign constant diffusivity
          ! call param_read('Dynamic diffusivity', diffusivity)
@@ -196,85 +151,75 @@ contains
       initialize_fc: block
          use multivdscalar_class, only: bcond
          use parallel, only: MPI_REAL_WP
-         use messager, only: die
-
          integer :: n, i, j, k, ierr
          character(len=str_medium) :: fuel, oxidizer
          real(WP) :: moles_fuel
-
-         character(len=str_medium), dimension(:), allocatable :: spname
+         real(WP) :: T_init
          type(bcond), pointer :: mybc
 
-         ! Allocate space
-         allocate (spname(nspec))
-         allocate (Yinit(nspec))
-         allocate (Yb(nspec))
+         call param_read('Stoich moles fuel', moles_fuel)
+         call param_read('Fuel', fuel)
+         call param_read('Oxidizer', oxidizer)
+         call param_read('T init', T_init)
 
-         call fcmech_get_speciesnames(spname)
-
-         call param_read('Tin', Tinit)
-         call param_read('Tb', Tb)
-
-         call param_read('Flame location', xloc)
          call param_read('Pressure', fc%Pthermo)
 
-         print *, "X location of initial flame front", xloc
-
-         ! Get initial composition
-         Yinit = 0.0_WP
          do i = 1, nspec
-            ! Check if species is defined
-            if (param_exists('Inflow '//trim(spname(i)))) then
-               call param_read('Inflow '//trim(spname(i)), Yinit(i))
-               print *, 'Inflow species ', trim(spname(i)), Yinit(i)
+            if (fc%SCname(i) .eq. fuel) then
+               isc_fuel = i
+               print *, "Fuel: ", trim(fc%SCname(i)), isc_fuel
+            elseif (fc%SCname(i) .eq. 'O2') then
+               isc_o2 = i
+            elseif (fc%SCname(i) .eq. 'N2') then
+               isc_n2 = i
             end if
          end do
-
-         Yinit = Yinit/sum(Yinit)
-
-         ! Get initial composition
-         Yb = 0.0_WP
-         do i = 1, nspec
-            ! Check if species is defined
-            if (param_exists('Burnt '//trim(spname(i)))) then
-               call param_read('Burnt '//trim(spname(i)), Yb(i))
-               print *, 'Burnt species ', trim(spname(i)), Yb(i)
-            end if
-         end do
-
-         Yb = Yb/sum(Yb)
 
          isc_T = nspec + 1
-         fc%SC(:, :, :, nspec + 1) = 300.0_WP
          ! tmp_sc = 1.0_WP
          do k = fc%cfg%kmino_, fc%cfg%kmaxo_
             do j = fc%cfg%jmino_, fc%cfg%jmaxo_
                do i = fc%cfg%imino_, fc%cfg%imaxo_
-                  fc%SC(i, j, k, 1:nspec) = Yinit + (Yb - Yinit)*0.5_WP*(1.0_WP + tanh((fc%cfg%xm(i) - xloc)/(Lx/20.0_WP)))
-                  fc%SC(i, j, k, nspec + 1) = Tinit + (Tb - Tinit)*0.5_WP*(1.0_WP + tanh((fc%cfg%xm(i) - xloc)/(Lx/20.0_WP)))
+                  if (sqrt((fc%cfg%x(i) - 0.5_WP*Lx)**2 + fc%cfg%y(j)**2) .lt. 0.1_WP*Lx) then
+                     tmp_sc(i, j, k) = 1.0_WP
+                  else
+                     tmp_sc(i, j, k) = 0.0_WP
+                  end if
+                  ! Set mass fraction of fuel
+                  fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
+                                             (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                              (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                  ! Set mass fraction of O2
+                  fc%SC(i, j, k, isc_o2) = W_sp(isc_o2)/ &
+                                           (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                            (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                  ! Set mass fraction of N2
+                  fc%SC(i, j, k, isc_n2) = 3.76_WP*W_sp(isc_n2)/ &
+                                           (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                            (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
 
+                  ! else
+                  !     fc%SC(i, j, k, isc_n2) = 1.0_WP
+                  ! end if
+                  fc%SC(i, j, k, isc_T) = T_init
                end do
             end do
          end do
-
-         call fc%get_bcond('inflow', mybc)
-         do n = 1, mybc%itr%no_
-            i = mybc%itr%map(1, n); j = mybc%itr%map(2, n); k = mybc%itr%map(3, n)
-            fc%SC(i, j, k, 1:nspec) = 2.0_WP*Yinit - fc%SC(i + 1, j, k, 1:nspec)
-            fc%SC(i, j, k, nspec + 1) = 2.0_WP*Tinit - fc%SC(i + 1, j, k, nspec + 1)
-
-         end do
-
          call fc%get_density()
          call fc%get_viscosity()
          call fc%get_diffusivity()
 
+         call fc%cfg%integrate(fc%rho, integral=fc%rhoint)
+         fc%RHO_0 = fc%rhoint/fc%cfg%vol_total
+
+         fc%Pthermo_old = fc%Pthermo
+
+         print *, "RHO_0 =", fc%RHO_0
+         ! print *, maxval(fc%visc), minval(fc%visc)
+
          call fc%get_max()
          print *, fc%visc_min, fc%visc_max
-         print *, fc%rhomin, fc%rhomax
-
-         call param_read("Use reactions", use_reactions)
-
+         print *, fc%diff_min, fc%diff_max
       end block initialize_fc
 
       ! Initialize our velocity field
@@ -286,16 +231,9 @@ contains
          ! Velocity fluctuation, length scales, epsilon
          real(WP) :: Ut, le, ld, epsilon
 
-         call param_read("U velocity", Uin)
-         fs%U = Uin
+         fs%U = 0.0_WP
          fs%V = 0.0_WP
          fs%W = 0.0_WP
-
-         call fs%get_bcond('inflow', mybc)
-         do n = 1, mybc%itr%no_
-            i = mybc%itr%map(1, n); j = mybc%itr%map(2, n); k = mybc%itr%map(3, n)
-            fs%U(i, j, k) = Uin
-         end do
 
          ! Set density from scalar
          fs%rho = fc%rho
@@ -324,23 +262,23 @@ contains
          call ens_out%add_scalar('divergence', fs%div)
          call ens_out%add_scalar('density', fc%rho)
          call ens_out%add_scalar('viscosity', fc%visc)
-         call ens_out%add_scalar('thermal_diff', fc%diff(:, :, :, nspec + 1))
+         call ens_out%add_scalar('thermal_diff', fc%diff(:, :, :, isc_T))
 
-         call ens_out%add_scalar('YNC12H26', fc%SC(:, :, :, sNXC12H26))
-         call ens_out%add_scalar('YOH', fc%SC(:, :, :, sOH))
-         call ens_out%add_scalar('YO2', fc%SC(:, :, :, sO2))
-         call ens_out%add_scalar('YN2', fc%SC(:, :, :, sN2))
-         call ens_out%add_scalar('T', fc%SC(:, :, :, nspec + 1))
+         call ens_out%add_scalar('Diff_fuel', fc%diff(:, :, :, sNXC12H26))
+
+         call ens_out%add_scalar('YNC12H26', fc%SC(:, :, :, isc_fuel))
+         call ens_out%add_scalar('YOH', fc%SC(:, :, :, 5))
+         call ens_out%add_scalar('YO2', fc%SC(:, :, :, isc_o2))
+         call ens_out%add_scalar('YN2', fc%SC(:, :, :, isc_n2))
+         call ens_out%add_scalar('T', fc%SC(:, :, :, isc_T))
          call ens_out%add_scalar('YHO2', fc%SC(:, :, :, sHO2))
          call ens_out%add_scalar('YSXC12H25', fc%SC(:, :, :, sSXC12H25))
-         call ens_out%add_scalar('YH2O', fc%SC(:, :, :, sH2O))
-         call ens_out%add_scalar('YCO', fc%SC(:, :, :, sCO))
 
-         call ens_out%add_scalar('SRC_YNC12H26', fc%SRCchem(:, :, :, sNXC12H26))
-         call ens_out%add_scalar('SRC_YO2', fc%SRCchem(:, :, :, sO2))
+         call ens_out%add_scalar('SRC_YNC12H26', fc%SRCchem(:, :, :, isc_fuel))
+         call ens_out%add_scalar('SRC_YO2', fc%SRCchem(:, :, :, isc_o2))
          call ens_out%add_scalar('SRC_YHO2', fc%SRCchem(:, :, :, sHO2))
          call ens_out%add_scalar('SRC_YSXC12H25', fc%SRCchem(:, :, :, sSXC12H25))
-         call ens_out%add_scalar('SRC_T', fc%SRCchem(:, :, :, nspec + 1))
+         call ens_out%add_scalar('SRC_T', fc%SRCchem(:, :, :, isc_T))
 
          ! Output to ensight
          if (ens_evt%occurs()) call ens_out%write_data(time%t)
@@ -432,10 +370,7 @@ contains
          ! Apply time-varying Dirichlet conditions
          ! This is where time-dpt Dirichlet would be enforced
          ! t1 = parallel_time()
-         fc%SRCchem = 0.0_WP
-         if (use_reactions) then
-            call fc%react(time%dt)
-         end if
+         ! call fc%react(time%dt)
          ! call fc%diffusive_source(time%dt)
          ! t2 = parallel_time()
          ! Perform sub-iterations
@@ -451,13 +386,13 @@ contains
 
                call fc%metric_reset()
 
-               fc%SRC = 0.0_WP
-               ! call fc%pressure_source()
-
                ! Build mid-time scalar
                fc%SC = 0.5_WP*(fc%SC + fc%SCold)
 
+               fc%SRC = 0.0_WP
+               call fc%pressure_source()
                call fc%diffusive_source(time%dt)
+
                ! Explicit calculation of drhoSC/dt from scalar equation
                call fc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
 
@@ -466,10 +401,10 @@ contains
                do nsc = 1, fc%nscalar
                   ! Assemble explicit residual
                   resSC(:, :, :, nsc) = time%dt*resSC(:, :, :, nsc) - 2.0_WP*fc%rho*fc%SC(:, :, :, nsc) + (fc%rho + fc%rhoold)*fc%SCold(:, :, :, nsc) + fc%rho*fc%SRCchem(:, :, :, nsc) + fc%SRC(:, :, :, nsc)
-               end do
+                  ! Apply it to get explicit scalar prediction
+                  SCtmp(:, :, :, nsc) = 2.0_WP*fc%SC(:, :, :, nsc) - fc%SCold(:, :, :, nsc) + resSC(:, :, :, nsc)/fc%rho ! NEEDS TO BE DIVIDED BY RHO
 
-               ! Apply it to get explicit scalar prediction
-               SCtmp = 2.0_WP*fc%SC - fc%SCold + resSC
+               end do
 
                do k = fc%cfg%kmino_, fc%cfg%kmaxo_
                   do j = fc%cfg%jmino_, fc%cfg%jmaxo_
@@ -503,19 +438,8 @@ contains
                call fc%solve_implicit(time%dt, resSC, fs%rhoU, fs%rhoV, fs%rhoW)
                ! Re-apply Dirichlet BCs
                fc%SC = 2.0_WP*fc%SC - fc%SCold + resSC
-               ! Apply all boundary conditions on the resulting field
+               ! Apply all other boundary conditions on the resulting field
                call fc%apply_bcond(time%t, time%dt)
-               dirichlet_scalar: block
-                  use multivdscalar_class, only: bcond
-                  type(bcond), pointer :: mybc
-                  integer :: n, i, j, k
-                  call fc%get_bcond('inflow', mybc)
-                  do n = 1, mybc%itr%no_
-                     i = mybc%itr%map(1, n); j = mybc%itr%map(2, n); k = mybc%itr%map(3, n)
-                     fc%SC(i, j, k, 1:nspec) = 2.0_WP*Yinit - fc%SC(i + 1, j, k, 1:nspec)
-                     fc%SC(i, j, k, nspec + 1) = 2.0_WP*Tinit - fc%SC(i + 1, j, k, nspec + 1)
-                  end do
-               end block dirichlet_scalar
             end block scalar_solver
             ! =============================================
             ! ============ UPDATE PROPERTIES ====================
@@ -568,17 +492,6 @@ contains
 
             ! Apply other boundary conditions and update momentum
             call fs%apply_bcond(time%tmid, time%dtmid)
-            dirichlet_velocity: block
-               use lowmach_class, only: bcond
-               type(bcond), pointer :: mybc
-               integer :: n, i, j, k
-               call fs%get_bcond('inflow', mybc)
-               do n = 1, mybc%itr%no_
-                  i = mybc%itr%map(1, n); j = mybc%itr%map(2, n); k = mybc%itr%map(3, n)
-                  fs%U(i, j, k) = Uin
-               end do
-            end block dirichlet_velocity
-
             call fs%rho_multiply()
 
             ! Solve Poisson equation

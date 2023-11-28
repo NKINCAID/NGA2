@@ -2,9 +2,9 @@
 Partition : 1 1 1
 
 # Mesh definition
-Lx : 1.0
-Ly : 1.0
-Lz : 0.1
+Lx : 0.01
+Ly : 0.01
+Lz : 0.0001
 nx : 128
 ny : 128
 nz : 1
@@ -24,8 +24,8 @@ Pressure = 3.4e6
 # Time integration
 Max timestep size :	5e-3
 Max cfl number    :	0.8
-Max time          : 1
-Max iterations    : 1000
+Max time          : 10
+Max iterations    : 10000
 Sub iterations     : 5
 
 # Pressure solver

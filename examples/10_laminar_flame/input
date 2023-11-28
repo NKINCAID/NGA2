@@ -2,9 +2,9 @@
 Partition : 1 1 1
 
 # Mesh definition
-Lx : 0.03
-Ly : 0.001
-Lz : 0.001
+Lx : 3e-4
+Ly : 3e-5
+Lz : 3e-5
 nx : 256
 ny : 1
 nz : 1
@@ -23,9 +23,9 @@ Pressure = 3.4e6
 
 # Time integration
 Max timestep size :	1e-5
-Max cfl number    :	0.8
+Max cfl number    :	0.5
 Max time          : 1
-Max iterations    : 10000
+Max iterations    : 100000
 Sub iterations     : 5
 
 # Pressure solver
@@ -33,15 +33,14 @@ Pressure tolerance : 1e-10
 Pressure iteration : 100
 
 # Ensight output
-Ensight output period : 1e-4
+Ensight output period : 1e-6
 
 # U velocity : 0.143032
-U velocity : 0.0
-
+U velocity : 0.143032
 
 Use reactions : .true.
 
-Flame location : 0.8 
+Flame location : 0.000114609375
 
 Tin : 300
 Tb : 2363.78

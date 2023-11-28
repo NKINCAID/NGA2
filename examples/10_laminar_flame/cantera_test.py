@@ -12,8 +12,10 @@ gas = ct.Solution('cti/YAO_reduced.cti')
 
 gas.set_equivalence_ratio(1.0, "NXC12H26", "O2:1.0,N2:3.76")
 gas.TP = 300.0, 3.4e6
-width = 0.03  # m
+width = 3e-4  # m
 loglevel = 1  # amount of diagnostic output (0 to 8)
+
+restore = True
 
 # Set up flame object
 f = ct.FreeFlame(gas, width=width)
@@ -23,9 +25,12 @@ f.transport_model = 'multicomponent'
 output = "./laminar_flame_data/flame.yaml"
 # f.show()
 
-try:
-    f.restore(output, name="multi")
-except:
+if restore:
+    try:
+        f.restore(output, name="multi")
+    except:
+        print("Couldn't restore...")
+else:
     # Solve with multi-component transport properties
     f.solve(loglevel)  # don't use 'auto' on subsequent solves
     # f.show()
@@ -44,34 +49,62 @@ print()
 for i,spec in enumerate(gas.species_names):
     if Yb[i] > 1.0e-10: 
         print("Burnt {:10}    :    {:.7e}".format(spec, Yb[i]))
-# fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-# ax.plot(
-#     states.t * 1000,
-#     states.T,
-#     lw=lw,
-#     label="Cantera",
-#     color=c[0],
-# )
 
-# ax.plot(
-#     time_array  * 1000,
-#     T_array,
-#     lw=lw,
-#     ls="--",
-#     label="NGA2",
-#     color=c[1],
-# )
 
-# ax.set(
-#     xlabel="Time [ms]",
-#     ylabel="Temperature [K]",
-#     ylim=[650, 3100],
-# )
-# ax.grid()
+#compute flame thickness
+z= f.flame.grid
+T = f.T
+size = len(z)-1
+grad = np.zeros(size)
+for i in range(size):
+  grad[i] = (T[i+1]-T[i])/(z[i+1]-z[i])
+thickness = (max(T) -min(T)) / max(grad)
+location = f.grid[np.argmax(grad)]
 
-# ax.legend(frameon=False, loc="lower right")
+print('laminar flame thickness = ', thickness)
+print('laminar flame location = ', location)
 
-# plt.title(r"Constant Volume Reactor")
 
-# plt.tight_layout()
-# # plt.savefig("temperature.png")
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+ax.plot(
+    f.grid * 1000,
+    f.T,
+    lw=lw,
+    label="Temperature",
+    color=c[0],
+)
+
+
+ax.set(
+    xlabel="Grid [mm]",
+    ylabel="Temperature [K]",
+    ylim=[200, 2600],
+)
+ax2 = ax.twinx()
+
+ax2.plot(
+    f.grid * 1000,
+    f.velocity,
+    lw=lw,
+    label="Velocity",
+    color=c[1],
+)
+
+
+ax2.set(
+    ylabel="Velocity [m/s]",
+    ylim=[0, 2.0],
+)
+
+ax.grid()
+
+ax.legend(frameon=False, loc="upper left")
+ax2.legend(frameon=False, loc="lower right")
+
+
+plt.title(r"1D Laminar Flame")
+
+plt.tight_layout()
+plt.show()
+# plt.savefig("temperature.png")

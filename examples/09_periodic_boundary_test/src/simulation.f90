@@ -180,7 +180,7 @@ contains
          do k = fc%cfg%kmino_, fc%cfg%kmaxo_
             do j = fc%cfg%jmino_, fc%cfg%jmaxo_
                do i = fc%cfg%imino_, fc%cfg%imaxo_
-                  if (sqrt((fc%cfg%x(i) - 0.5_WP*Lx)**2 + fc%cfg%y(j)**2) .lt. 0.2) then
+                  if (sqrt((fc%cfg%x(i) - 0.5_WP)**2 + fc%cfg%y(j)**2) .lt. 0.2) then
                      tmp_sc(i, j, k) = 1.0_WP
                   else
                      tmp_sc(i, j, k) = 0.0_WP
@@ -383,12 +383,13 @@ contains
 
                call fc%metric_reset()
 
+               ! Build mid-time scalar
+               fc%SC = 0.5_WP*(fc%SC + fc%SCold)
+
                fc%SRC = 0.0_WP
                call fc%pressure_source()
                call fc%diffusive_source(time%dt)
 
-               ! Build mid-time scalar
-               fc%SC = 0.5_WP*(fc%SC + fc%SCold)
                ! Explicit calculation of drhoSC/dt from scalar equation
                call fc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
 
@@ -396,22 +397,23 @@ contains
 
                do nsc = 1, fc%nscalar
                   ! Assemble explicit residual
-                  resSC(:, :, :, nsc) = time%dt*resSC(:, :, :, nsc) - 2.0_WP*fc%rho*fc%SC(:, :, :, nsc) + (fc%rho + fc%rhoold)*fc%SCold(:, :, :, nsc)
+                  resSC(:, :, :, nsc) = time%dt*resSC(:, :, :, nsc) - 2.0_WP*fc%rho*fc%SC(:, :, :, nsc) + (fc%rho + fc%rhoold)*fc%SCold(:, :, :, nsc) + fc%rho*fc%SRCchem(:, :, :, nsc) + fc%SRC(:, :, :, nsc)
+                  ! Apply it to get explicit scalar prediction
+                  SCtmp(:, :, :, nsc) = 2.0_WP*fc%SC(:, :, :, nsc) - fc%SCold(:, :, :, nsc) + resSC(:, :, :, nsc)/fc%rho ! NEEDS TO BE DIVIDED BY RHO
+
                end do
 
-               ! Apply it to get explicit scalar prediction
-               SCtmp = 2.0_WP*fc%SC - fc%SCold + resSC
-
-               do nsc = 1, nspec
-                  do k = fc%cfg%kmino_, fc%cfg%kmaxo_
-                     do j = fc%cfg%jmino_, fc%cfg%jmaxo_
-                        do i = fc%cfg%imino_, fc%cfg%imaxo_
-                           if (SCtmp(i, j, k, nsc) .le. 0.0_WP .or. SCtmp(i, j, k, nsc) .ge. 1.0_WP .and. flag(i, j, k) .eqv. .true.) then
+               do k = fc%cfg%kmino_, fc%cfg%kmaxo_
+                  do j = fc%cfg%jmino_, fc%cfg%jmaxo_
+                     do i = fc%cfg%imino_, fc%cfg%imaxo_
+                        scalar_loop: do nsc = 1, nspec
+                           if (SCtmp(i, j, k, nsc) .le. 0.0_WP .or. SCtmp(i, j, k, nsc) .ge. 1.0_WP) then
                               flag(i, j, k) = .true.
+                              exit scalar_loop
                            else
                               flag(i, j, k) = .false.
                            end if
-                        end do
+                        end do scalar_loop
                      end do
                   end do
                end do
