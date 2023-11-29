@@ -39,5 +39,8 @@ Stoich moles fuel : 0.05405405405405406
 Fuel : NXC12H26
 Oxidizer : air
 
-T init : 750
+T init : 850
+
+Drop diameter : 0.001
+Equivalence ratio : 1.0
 

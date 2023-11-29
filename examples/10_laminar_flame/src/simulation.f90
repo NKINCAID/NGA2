@@ -447,7 +447,7 @@ contains
                use messager, only: die
                integer :: nsc
                integer :: i, j, k
-               logical, dimension(:, :, :), allocatable :: flag
+               logical, dimension(:, :, :, :), allocatable :: flag
 
                call fc%metric_reset()
 
@@ -461,7 +461,7 @@ contains
                ! Explicit calculation of drhoSC/dt from scalar equation
                call fc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
 
-               allocate (flag(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
+               allocate (flag(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_, fc%nscalar))
 
                do nsc = 1, fc%nscalar
                   ! Assemble explicit residual
@@ -471,18 +471,26 @@ contains
                end do
 
                ! Apply it to get explicit scalar prediction
-
-               do k = fc%cfg%kmino_, fc%cfg%kmaxo_
-                  do j = fc%cfg%jmino_, fc%cfg%jmaxo_
-                     do i = fc%cfg%imino_, fc%cfg%imaxo_
-                        scalar_loop: do nsc = 1, nspec
-                           if (SCtmp(i, j, k, nsc) .le. 0.0_WP .or. SCtmp(i, j, k, nsc) .ge. 1.0_WP) then
-                              flag(i, j, k) = .true.
-                              exit scalar_loop
+               do nsc = 1, fc%nscalar
+                  do k = fc%cfg%kmino_, fc%cfg%kmaxo_
+                     do j = fc%cfg%jmino_, fc%cfg%jmaxo_
+                        do i = fc%cfg%imino_, fc%cfg%imaxo_
+                           if (nsc .eq. nspec + 1) then
+                              if (SCtmp(i, j, k, nsc) .le. 290.0_WP .or. SCtmp(i, j, k, nsc) .ge. 4000.0_WP) then
+                                 flag(i, j, k, nsc) = .true.
+                              else
+                                 flag(i, j, k, nsc) = .false.
+                              end if
                            else
-                              flag(i, j, k) = .false.
+                              if (SCtmp(i, j, k, nsc) .le. 0.0_WP .or. SCtmp(i, j, k, nsc) .ge. 1.0_WP) then
+                                 flag(i, j, k, nsc) = .true.
+
+                              else
+                                 flag(i, j, k, nsc) = .false.
+
+                              end if
                            end if
-                        end do scalar_loop
+                        end do
                      end do
                   end do
                end do

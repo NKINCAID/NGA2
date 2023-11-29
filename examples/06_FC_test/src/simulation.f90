@@ -41,6 +41,8 @@ module simulation
    real(WP), dimension(:, :, :), allocatable :: tmp_sc
    real(WP), dimension(:, :, :, :), allocatable :: resSC, SCtmp
 
+   logical, dimension(:, :, :, :), allocatable :: flag
+
    !> Fluid, forcing, and particle parameters
    real(WP) :: visc, meanU, meanV, meanW
    real(WP) :: Urms0, TKE0, EPS0, Re_max
@@ -335,10 +337,10 @@ contains
 
       ! Create a scalar solver
       create_fc: block
-         use multivdscalar_class, only: dirichlet, neumann, quick
+         use multivdscalar_class, only: dirichlet, neumann, quick, bquick
          real(WP) :: diffusivity
          ! Create scalar solver
-         fc = finitechem(cfg=cfg, scheme=quick, name='fc')
+         fc = finitechem(cfg=cfg, scheme=bquick, name='fc')
          ! Outflow on the right
          call fc%add_bcond(name='xm_outflow', type=neumann, locator=xm_scalar, dir='-x')
          call fc%add_bcond(name='xp_outflow', type=neumann, locator=xp_locator, dir='+x')
@@ -371,6 +373,8 @@ contains
          allocate (resSC(fc%cfg%imino_:fc%cfg%imaxo_, fc%cfg%jmino_:fc%cfg%jmaxo_, fc%cfg%kmino_:fc%cfg%kmaxo_, fc%nscalar))
          allocate (SCtmp(fc%cfg%imino_:fc%cfg%imaxo_, fc%cfg%jmino_:fc%cfg%jmaxo_, fc%cfg%kmino_:fc%cfg%kmaxo_, fc%nscalar))
 
+         allocate (flag(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_, fc%nscalar))
+
          ! Temporary scalar field for initialization
          allocate (tmp_sc(fc%cfg%imin:fc%cfg%imax, fc%cfg%jmin:fc%cfg%jmax, fc%cfg%kmin:fc%cfg%kmax))
       end block allocate_work_arrays
@@ -382,6 +386,7 @@ contains
          call param_read('Max cfl number', time%cflmax)
          call param_read('Max time', time%tmax)
          call param_read('Max iterations', time%nmax)
+         call param_read('Sub-iterations', time%itmax)
 
          time%dt = time%dtmax
          time%itmax = 5
@@ -481,27 +486,26 @@ contains
             do j = fc%cfg%jmino_, fc%cfg%jmaxo_
                do i = fc%cfg%imino_, fc%cfg%imaxo_
                   if (i .ge. imin .and. i .le. imax .and. j .ge. jmin .and. j .le. jmax .and. k .ge. kmin .and. k .le. kmax) then
-                     continue
-                  else
-                     tmp_sc(i, j, k) = 0.0_WP
-                  end if
-                  ! Set mass fraction of fuel
-                  fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
-                                             (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                              (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                  ! Set mass fraction of O2
-                  fc%SC(i, j, k, isc_o2) = W_sp(isc_o2)/ &
-                                           (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                            (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                  ! Set mass fraction of N2
-                  fc%SC(i, j, k, isc_n2) = 3.76_WP*W_sp(isc_n2)/ &
-                                           (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                            (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                     fc%SC(i, j, k, isc_T) = T_init
 
-                  ! else
-                  !     fc%SC(i, j, k, isc_n2) = 1.0_WP
-                  ! end if
-                  fc%SC(i, j, k, isc_T) = T_init
+                     ! Set mass fraction of fuel
+                     fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
+                                                (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                                 (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                     ! Set mass fraction of O2
+                     fc%SC(i, j, k, isc_o2) = W_sp(isc_o2)/ &
+                                              (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                               (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+                     ! Set mass fraction of N2
+                     fc%SC(i, j, k, isc_n2) = 3.76_WP*W_sp(isc_n2)/ &
+                                              (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
+                                               (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
+
+                  else
+                     fc%SC(i, j, k, isc_n2) = 1.0_WP
+                     fc%SC(i, j, k, isc_T) = 300.0_WP
+
+                  end if
                end do
             end do
          end do
@@ -668,7 +672,6 @@ contains
                use messager, only: die
                integer :: nsc
                integer :: i, j, k
-               logical, dimension(:, :, :), allocatable :: flag
 
                call fc%metric_reset()
 
@@ -682,8 +685,6 @@ contains
                ! Explicit calculation of drhoSC/dt from scalar equation
                call fc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
 
-               allocate (flag(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
-
                do nsc = 1, fc%nscalar
                   ! Assemble explicit residual
                   resSC(:, :, :, nsc) = time%dt*resSC(:, :, :, nsc) - 2.0_WP*fc%rho*fc%SC(:, :, :, nsc) + (fc%rho + fc%rhoold)*fc%SCold(:, :, :, nsc) + fc%rho*fc%SRCchem(:, :, :, nsc) + fc%SRC(:, :, :, nsc)
@@ -692,25 +693,29 @@ contains
                end do
 
                ! Apply it to get explicit scalar prediction
-
-               do k = fc%cfg%kmino_, fc%cfg%kmaxo_
-                  do j = fc%cfg%jmino_, fc%cfg%jmaxo_
-                     do i = fc%cfg%imino_, fc%cfg%imaxo_
-                        scalar_loop: do nsc = 1, nspec
-                           if (SCtmp(i, j, k, nsc) .le. 0.0_WP .or. SCtmp(i, j, k, nsc) .ge. 1.0_WP) then
-                              flag(i, j, k) = .true.
-                              exit scalar_loop
+               do nsc = 1, fc%nscalar
+                  do k = fc%cfg%kmino_, fc%cfg%kmaxo_
+                     do j = fc%cfg%jmino_, fc%cfg%jmaxo_
+                        do i = fc%cfg%imino_, fc%cfg%imaxo_
+                           if (nsc .eq. nspec + 1) then
+                              if (SCtmp(i, j, k, nsc) .le. 250.0_WP .or. SCtmp(i, j, k, nsc) .ge. 4000.0_WP) then
+                                 flag(i, j, k, nsc) = .true.
+                              else
+                                 flag(i, j, k, nsc) = .false.
+                              end if
                            else
-                              flag(i, j, k) = .false.
+                              if (SCtmp(i, j, k, nsc) .le. 0.0_WP .or. SCtmp(i, j, k, nsc) .ge. 1.0_WP) then
+                                 flag(i, j, k, nsc) = .true.
+                              else
+                                 flag(i, j, k, nsc) = .false.
+                              end if
                            end if
-                        end do scalar_loop
+                        end do
                      end do
                   end do
                end do
                ! Adjust metrics
                call fc%metric_adjust(SCtmp, flag)
-               ! Clean up
-               deallocate (flag)
 
                ! Recompute drhoSC/dt
                call fc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
