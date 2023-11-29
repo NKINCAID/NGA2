@@ -11,6 +11,7 @@ module mathtools
    public :: normalize
    public :: qrotate
    public :: arctan
+   public :: ReLU
    
    ! Trigonometric parameters
    real(WP), parameter :: Pi   =3.1415926535897932385_WP
@@ -168,4 +169,13 @@ contains
   end function arctan
    
    
+  ! Rectified Linear Unit
+  elemental pure function ReLU(x)
+     real(WP), intent(in) :: x
+     real(WP) :: ReLU
+   
+     ReLU=max(0.0_WP,x)
+  end function ReLU
+
+
 end module mathtools
