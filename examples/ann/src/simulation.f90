@@ -7,6 +7,7 @@ module simulation
    use lowmach_class,     only: lowmach
    use vdscalar_class,    only: vdscalar
    use sgsmodel_class,    only: sgsmodel
+   use aencoder_class,    only: aencoder
    use timetracker_class, only: timetracker
    use ensight_class,     only: ensight
    use event_class,       only: event
@@ -23,6 +24,7 @@ module simulation
    type(sgsmodel),    public :: sgs
 
    !> Machine learning interface
+   type(aencoder) :: ae
 
    !> Ensight postprocessing
    type(ensight) :: ens_out
@@ -325,7 +327,15 @@ contains
 
 
       create_mlinterface: block
-
+         use string, only: str_medium
+         character(len=str_medium) :: aefname
+         ! Read in the data file name
+         call param_read('Auto encoder file name',aefname)
+         ! Initialize the auto encoder
+         call ae%init(fdata=aefname,name='Auto Encoder')
+         ! Debug
+         print*,'File name: ',ae%filename
+         print*,'Object name: ',ae%name
       end block create_mlinterface
 
 

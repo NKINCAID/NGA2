@@ -29,8 +29,8 @@ VPATH_LOCATIONS   += $(Ulocs)
 include $(NGA_HOME)/tools/GNUMake/Make.defs
 
 # Include NGA base code
-Bdirs   := core two_phase data transform solver config grid libraries subgrid variable_density ann
-Bpack   += $(foreach dir, $(Bdirs), $(NGA_HOME)/src/$(dir)/Make.package)
+Bdirs := core data transform solver config grid libraries ann subgrid variable_density
+Bpack += $(foreach dir, $(Bdirs), $(NGA_HOME)/src/$(dir)/Make.package)
 include $(Bpack)
 
 # Inform user of Make.packages used

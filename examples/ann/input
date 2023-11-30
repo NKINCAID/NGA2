@@ -1,5 +1,5 @@
 # Parallelization
-Partition :	8 1 1
+Partition :	1 1 1
 
 # Mesh definition
 Lx : 10
@@ -27,6 +27,9 @@ U jet    : 1
 Z coflow : 0.2
 D coflow : 3
 U coflow : 0.2
+
+# Machine learning interface
+Auto encoder file name : auto_encoder
 
 # Time integration
 Max timestep size :	1.5e-2
