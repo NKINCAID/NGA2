@@ -5,6 +5,7 @@ module simulation
    use ddadi_class, only: ddadi
    use fft3d_class, only: fft3d
    use hypre_str_class, only: hypre_str
+   use hypre_uns_class, only: hypre_uns
    use lowmach_class, only: lowmach
    use vdscalar_class, only: vdscalar
    use multivdscalar_class, only: multivdscalar
@@ -20,6 +21,7 @@ module simulation
 
    !> Single low Mach flow solver and scalar solver and corresponding time tracker
    type(hypre_str), public :: ps
+   ! type(hypre_uns), public :: ps
    ! type(fft3d), public :: ps
    type(ddadi), public :: vs, ss
    type(lowmach), public :: fs
@@ -111,7 +113,8 @@ contains
 
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
-         use hypre_str_class, only: pcg_pfmg, smg
+         use hypre_str_class, only: pcg_pfmg, smg, gmres_pfmg, gmres, pcg
+         ! use hypre_uns_class, only: amg, pcg_amg, gmres_amg, bicgstab_amg, gmres
          use lowmach_class, only: dirichlet, clipped_neumann, slip, neumann
          real(WP) :: visc
          ! Create flow solver
@@ -124,6 +127,8 @@ contains
 
          ! ! Configure pressure solver
          ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
+         ! ps = hypre_uns(cfg=cfg, name='Pressure', method=smg, nst=7)
+
          ps%maxlevel = 18
          call param_read('Pressure iteration', ps%maxit)
          call param_read('Pressure tolerance', ps%rcvg)

@@ -2,9 +2,9 @@
 Partition : 1 1 1
 
 # Mesh definition
-Lx : 3e-4
-Ly : 3e-5
-Lz : 3e-5
+Lx : 1e-3
+Ly : 1e-4
+Lz : 1e-4
 nx : 256
 ny : 1
 nz : 1
@@ -36,12 +36,12 @@ Pressure iteration : 100
 Ensight output period : 1e-6
 
 # U velocity : 0.143032
-U velocity : 0.143032
+U velocity : 0.143171
 
 Use reactions : .true.
 
-# Flame location : 0.000114609375
-Flame location : 0.000094609375
+Flame location : 0.000339765625
+#Flame location : 0.000094609375
 
 
 Tin : 300
@@ -51,15 +51,15 @@ Inflow N2            :    7.1880666e-01
 Inflow O2            :    2.1835943e-01
 Inflow NXC12H26      :    6.2833903e-02
 
-Burnt N2            :    7.1822912e-01
-Burnt O             :    2.6739737e-05
-Burnt H2            :    1.2587155e-04
-Burnt H             :    3.4117547e-06
-Burnt OH            :    8.5291588e-04
-Burnt H2O           :    8.6823927e-02
-Burnt H2O2          :    1.9087852e-07
-Burnt O2            :    1.7106285e-03
-Burnt HO2           :    7.4788083e-07
-Burnt CO2           :    1.8346275e-01
-Burnt CO            :    8.7636863e-03
-Burnt HCO           :    5.1648695e-09
+Burnt N2            :    7.1821812e-01
+Burnt O             :    2.6252742e-05
+Burnt H2            :    1.2837434e-04
+Burnt H             :    3.4469894e-06
+Burnt OH            :    8.4525769e-04
+Burnt H2O           :    8.6870241e-02
+Burnt H2O2          :    1.8754412e-07
+Burnt O2            :    1.6490380e-03
+Burnt HO2           :    7.2783151e-07
+Burnt CO2           :    1.8333114e-01
+Burnt CO            :    8.9272019e-03
+Burnt HCO           :    5.3166697e-09

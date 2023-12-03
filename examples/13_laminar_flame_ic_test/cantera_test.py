@@ -7,12 +7,15 @@ import plot_params
 from plot_params import lw, ls, ms, mk, c
 from matplotlib.lines import Line2D
 
+import pandas as pd
+import os
+
 
 gas = ct.Solution('cti/YAO_reduced.cti')
 
 gas.set_equivalence_ratio(1.0, "NXC12H26", "O2:1.0,N2:3.76")
 gas.TP = 300.0, 3.4e6
-width = 3e-4  # m
+width = 1e-3  # m
 loglevel = 1  # amount of diagnostic output (0 to 8)
 
 restore = True
@@ -43,7 +46,7 @@ Yin = f.Y[:,0]
 Yb = f.Y[:,-1]
 
 for i,spec in enumerate(gas.species_names):
-    if Yin[i] > 1.0e-10: 
+    if Yin[i] > 1.0e-8: 
         print("Inflow {:10}    :    {:.7e}".format(spec, Yin[i]))
 print()
 for i,spec in enumerate(gas.species_names):
@@ -64,6 +67,28 @@ location = f.grid[np.argmax(grad)]
 print('laminar flame thickness = ', thickness)
 print('laminar flame location = ', location)
 
+files = os.listdir('ensight/vdjet/extract/')
+files = [val for val in files if "test" in val]
+files.sort()
+file = files[-1]
+df = pd.read_csv('ensight/vdjet/extract/{}'.format(file))
+df = df[df['T'].notnull()]
+
+T = df["T"]
+
+z = df["Points:0"] 
+size = len(z)-1
+grad = np.zeros(size)
+for i in range(size):
+  grad[i] = (T[i+1]-T[i])/(z[i+1]-z[i])
+thickness2 = (max(T) -min(T)) / max(grad)
+location2 = z[np.argmax(grad)]
+
+print('laminar flame thickness = ', thickness2)
+print('laminar flame location = ', location2)
+
+# print('laminar flame thickness = ', thickness2)
+print( thickness - thickness2)
 
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 6))

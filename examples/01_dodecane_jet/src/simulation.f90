@@ -39,7 +39,7 @@ module simulation
 
    !> Private work arrays
    real(WP), dimension(:, :, :, :, :), allocatable :: gradU
-   real(WP), dimension(:, :, :), allocatable :: resU, resV, resW, resSC, srcSC
+   real(WP), dimension(:, :, :), allocatable :: resU, resV, resW, resSC, srcSC, relaxSC
    real(WP), dimension(:, :, :), allocatable :: Ui, Vi, Wi, dRHOdt, dRHO
    real(WP), dimension(:, :, :, :), allocatable :: SR
 
@@ -63,6 +63,9 @@ module simulation
    integer :: counter
 
    integer :: nfilter
+
+   logical, dimension(:, :, :), allocatable :: flag
+   real(WP), dimension(:, :, :), allocatable :: SCtmp
 
 contains
    subroutine get_rho()
@@ -106,7 +109,7 @@ contains
       logical :: isIn
       isIn = .false.
       ! if (i .ge. pg%imax) isIn = .true.
-      if (i .eq. pg%imax) isIn = .true.
+      if (i .eq. pg%imax+1) isIn = .true.
 
    end function scalar_right_boundary
 
@@ -166,12 +169,45 @@ contains
       if (j .eq. pg%jmax + 1) isIn = .true.
    end function yp_locator
 
+      ! sufficient for seeding a better PRNG.
+      function lcg(s)
+         use precision, only: i8
+        integer :: lcg
+        integer(i8) :: s
+        if (s == 0) then
+           s = 104729
+        else
+           s = mod(s, 4294967296_I8)
+        end if
+        s = mod(s * 279470273_I8, 4294967291_I8)
+        lcg = int(mod(s, int(huge(0), I8)), kind(0))
+      end function lcg
+
    !> Initialization of problem solver
    subroutine simulation_init
       use param, only: param_read, param_exists
       use messager, only: die
       implicit none
       print *, counter; counter = counter + 1; 
+
+      ! init_random_seed: block
+      ! use precision, only: I4,I8
+      ! integer, allocatable :: seed(:)
+      ! integer :: i, n, un, istat, dt(8), pid
+      ! integer(I8) :: t
+
+      ! call random_seed(size = n)
+      ! allocate(seed(n))
+
+      ! t = 42
+
+      ! do i = 1, n
+      !    seed(i) = lcg(t)
+      ! end do
+      ! call random_seed(put=seed)
+      ! ! This simple P
+      ! end block init_random_seed
+
       ! Create an incompressible flow solver with bconds
       create_solver: block
          use hypre_str_class, only: pcg_pfmg, smg
@@ -192,8 +228,8 @@ contains
          ! Outflow on the right
          call fs%add_bcond(name='outflow', type=clipped_neumann, face='x', dir=+1, canCorrect=.true., locator=right_boundary)
          print *, counter; counter = counter + 1; 
-         call fs%add_bcond(name='ym_outflow', type=clipped_neumann, face='y', dir=-1, canCorrect=.False., locator=ym_locator)
-         call fs%add_bcond(name='yp_outflow', type=clipped_neumann, face='y', dir=+1, canCorrect=.False., locator=yp_locator)
+         call fs%add_bcond(name='ym_outflow', type=slip, face='y', dir=-1, canCorrect=.False., locator=ym_locator)
+         call fs%add_bcond(name='yp_outflow', type=slip, face='y', dir=+1, canCorrect=.False., locator=yp_locator)
          print *, counter; counter = counter + 1; 
          ! Configure pressure solver
          ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
@@ -208,17 +244,19 @@ contains
       print *, counter; counter = counter + 1; 
       ! Create a scalar solver
       create_scalar: block
-         use vdscalar_class, only: dirichlet, neumann, quick
+         use vdscalar_class, only: dirichlet, neumann, quick, bquick
+         use ils_class,      only: gmres
+
          real(WP) :: diffusivity
          ! Create scalar solver
-         sc = vdscalar(cfg=cfg, scheme=quick, name='Temperature')
+         sc = vdscalar(cfg=cfg, scheme=bquick, name='SV')
          ! Assign constant diffusivity
          call param_read('Dynamic diffusivity', diffusivity)
          sc%diff = diffusivity
 
-         ! call sc%add_bcond(name='coflow_inj', type=dirichlet, locator=coflow_inj)
-         ! call sc%add_bcond(name='jet_inj', type=dirichlet, locator=jet_inj)
-         ! call sc%add_bcond(name='pilot_inj', type=dirichlet, locator=pilot_inj)
+         call sc%add_bcond(name='coflow_inj', type=dirichlet, locator=coflow_inj)
+         call sc%add_bcond(name='jet_inj', type=dirichlet, locator=jet_inj)
+         call sc%add_bcond(name='pilot_inj', type=dirichlet, locator=pilot_inj)
          call sc%add_bcond(name='sc_outflow', type=neumann, locator=scalar_right_boundary, dir='+x')
 
          ss = ddadi(cfg=cfg, name='Scalar', nst=13)
@@ -240,12 +278,16 @@ contains
 
          allocate (resSC(fs%cfg%imino_:fs%cfg%imaxo_, fs%cfg%jmino_:fs%cfg%jmaxo_, fs%cfg%kmino_:fs%cfg%kmaxo_))
          allocate (srcSC(fs%cfg%imino_:fs%cfg%imaxo_, fs%cfg%jmino_:fs%cfg%jmaxo_, fs%cfg%kmino_:fs%cfg%kmaxo_))
+         allocate (relaxSC(fs%cfg%imino_:fs%cfg%imaxo_, fs%cfg%jmino_:fs%cfg%jmaxo_, fs%cfg%kmino_:fs%cfg%kmaxo_))
 
          allocate (dRHOdt(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
          allocate (dRHO(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
          allocate (diff(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
 
          allocate (gradU(1:3, 1:3, cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
+
+         allocate (flag(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
+         allocate (SCtmp(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
 
       end block allocate_work_arrays
       print *, counter; counter = counter + 1; 
@@ -672,6 +714,8 @@ contains
 
       ! Perform time integration
       do while (.not. time%done())
+         if (fs%cfg%amRoot) print *, 1, sc%rho(64,64,1)
+
 
          do k = sc%cfg%kmin_, sc%cfg%kmax_
             do j = sc%cfg%jmin_, sc%cfg%jmax_
@@ -740,6 +784,8 @@ contains
             call pd%sync()
 
          end block pdf_injection
+         if (fs%cfg%amRoot) print *, 2, sc%rho(64,64,1)
+
 
          call pd%control()
 
@@ -771,12 +817,15 @@ contains
                do k = sc%cfg%kmin_, sc%cfg%kmax_
                   do j = sc%cfg%jmin_, sc%cfg%jmax_
                      do i = sc%cfg%imin_, sc%cfg%imax_
-                        pd%SV(i, j, k) = sum(sgs%filtern(:, :, :, i, j, k)*pd%SV(i - 1:i + 1, j - 1:j + 1, k - 1:k + 1))
+                        pd%srcSC(i, j, k) = sum(sgs%filtern(:, :, :, i, j, k)*pd%srcSC(i - 1:i + 1, j - 1:j + 1, k - 1:k + 1))
                      end do
                   end do
                end do
             end do
          end block filter_pSV
+         if (fs%cfg%amRoot) print *, 3, sc%rho(64,64,1)
+
+
 
          ! Apply time-varying Dirichlet conditions
          ! This is where time-dpt Dirichlet would be enforced
@@ -784,32 +833,72 @@ contains
          ! Perform sub-iterations
          do while (time%it .le. time%itmax)
 
-            ! ============= SCALAR SOLVER =======================
-            ! Build mid-time scalar
-            sc%SC = 0.5_WP*(sc%SC + sc%SCold)
+            scalar_solver: block
+               use messager, only: die
+               integer :: nsc
+               integer :: i, j, k
 
-            ! Explicit calculation of drhoSC/dt from scalar equation
-            call sc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
+               call sc%metric_reset()
 
-            ! SV relaxation term
-            srcSC = 0.5_WP*(sc%RHO + sc%RHOold)*(pd%SV - sc%SC)/(tauSV)
+               ! ============= SCALAR SOLVER =======================
+               ! Build mid-time scalar
+               sc%SC = 0.5_WP*(sc%SC + sc%SCold)
 
-            ! Assemble explicit residual
-            resSC = time%dt*resSC + srcSC - (2.0_WP*sc%rho*sc%SC - (sc%rho + sc%rhoold)*sc%SCold)
+               ! Explicit calculation of drhoSC/dt from scalar equation
+               call sc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
 
-            ! Form implicit residual
-            call sc%solve_implicit(time%dt, resSC, fs%rhoU, fs%rhoV, fs%rhoW)
+               ! SV relaxation term
+               srcSC = 0.5_WP*(sc%RHO + sc%RHOold)*(pd%SV - sc%SC)/(tauSV) + pd%srcSC
 
-            ! Apply this residual
-            sc%SC = 2.0_WP*sc%SC - sc%SCold + resSC
+               ! Assemble explicit residual
+               resSC = time%dt*resSC + srcSC - (2.0_WP*sc%rho*sc%SC - (sc%rho + sc%rhoold)*sc%SCold)
 
-            ! Apply other boundary conditions on the resulting field
-            call sc%apply_bcond(time%t, time%dt)
+               ! Apply it to get explicit scalar prediction
+               SCtmp = 2.0_WP*sc%SC - sc%SCold + resSC/sc%rho
 
+               if (fs%cfg%amRoot) print *, "SCtmp", sc%rho(64,64,1), SCtmp(64,64,1), fs%U(64,64,1)
+
+
+               do k = sc%cfg%kmino_, sc%cfg%kmaxo_
+                  do j = sc%cfg%jmino_, sc%cfg%jmaxo_
+                     do i = sc%cfg%imino_, sc%cfg%imaxo_
+                        if (SCtmp(i, j, k) .le. 0.0_WP) then
+                           flag(i, j, k) = .true.
+                        else
+                           flag(i, j, k) = .false.
+                        end if
+                     end do
+                  end do
+               end do
+               ! Adjust metrics
+               call sc%metric_adjust(SCtmp, flag)
+
+               ! Recompute drhoSC/dt
+               ! Assemble explicit residual
+               resSC = time%dt*resSC + srcSC - (2.0_WP*sc%rho*sc%SC - (sc%rho + sc%rhoold)*sc%SCold)
+
+               if (fs%cfg%amRoot) print *, "Before SCupdate", sc%rho(64,64,1), sc%SC(64,64,1), fs%U(64,64,1), resSC(64,64,1), srcSC(64,64,1)
+
+               ! Form implicit residual
+               call sc%solve_implicit(time%dt, resSC, fs%rhoU, fs%rhoV, fs%rhoW)
+
+               ! Apply this residual
+               sc%SC = 2.0_WP*sc%SC - sc%SCold + resSC
+               if (fs%cfg%amRoot) print *, "SCupdate", sc%rho(64,64,1), sc%SC(64,64,1), fs%U(64,64,1), resSC(64,64,1)
+
+
+               ! Apply other boundary conditions on the resulting field
+               call sc%apply_bcond(time%t, time%dt)
+
+            end block scalar_solver
+            if (fs%cfg%amRoot) print *, "4a", sc%rho(64,64,1), sc%SC(64,64,1), fs%U(64,64,1)
             ! Backup rhoSC
             call get_rho()
 
             drho = sc%rho - sc%rhoold
+
+            if (fs%cfg%amRoot) print *, "4b", sc%rho(64,64,1), sc%SC(64,64,1), fs%U(64,64,1)
+
 
             ! test: block
             !   use vdscalar_class, only: bcond
@@ -843,7 +932,7 @@ contains
             call fs%get_dmomdt(resU, resV, resW)
 
             ! Add momentum source terms
-            call fs%addsrc_gravity(resU, resV, resW)
+            ! call fs%addsrc_gravity(resU, resV, resW)
 
             ! Assemble explicit residual
             resU = time%dtmid*resU - (2.0_WP*fs%rhoU - 2.0_WP*fs%rhoUold)
@@ -859,8 +948,6 @@ contains
             fs%W = 2.0_WP*fs%W - fs%Wold + resW
 
             ! Apply other boundary conditions and update momentum
-            call fs%apply_bcond(time%tmid, time%dtmid)
-            call fs%rho_multiply()
             call fs%apply_bcond(time%tmid, time%dtmid)
 
             ! Update time-varying Dirichlet conditions
@@ -896,6 +983,8 @@ contains
                end do
             end block update_inlet_conditions
 
+            call fs%rho_multiply()
+
             ! Solve Poisson equation
             call fs%correct_mfr(drhodt=dRHOdt)
             call fs%get_div(drhodt=dRHOdt)
@@ -904,6 +993,9 @@ contains
             call fs%psolv%solve()
             call fs%shift_p(fs%psolv%sol)
 
+            if (fs%cfg%amRoot) print *, 5, sc%rho(64,64,1)
+
+
             ! Correct momentum and rebuild velocity
             call fs%get_pgrad(fs%psolv%sol, resU, resV, resW)
             fs%P = fs%P + fs%psolv%sol
@@ -911,6 +1003,8 @@ contains
             fs%rhoV = fs%rhoV - time%dtmid*resV
             fs%rhoW = fs%rhoW - time%dtmid*resW
             call fs%rho_divide
+            if (fs%cfg%amRoot) print *, 6, sc%rho(64,64,1)
+
 
             ! ===================================================
 

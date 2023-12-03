@@ -280,7 +280,7 @@ contains
                      fc%SC(i, j, k, isc_T) = T_init
                   else
                      tmp1 = phi
-                     fc%SC(i, j, k, isc_T) = 600.0_WP
+                     fc%SC(i, j, k, isc_T) = 300.0_WP
                   end if
 
                   ! Set mass fraction of fuel
@@ -500,7 +500,7 @@ contains
                      do j = fc%cfg%jmino_, fc%cfg%jmaxo_
                         do i = fc%cfg%imino_, fc%cfg%imaxo_
                            if (nsc .eq. nspec + 1) then
-                              if (SCtmp(i, j, k, nsc) .le. 590.0_WP .or. SCtmp(i, j, k, nsc) .ge. 2800.0_WP) then
+                              if (SCtmp(i, j, k, nsc) .le. 295.0_WP .or. SCtmp(i, j, k, nsc) .ge. 2800.0_WP) then
                                  flag(i, j, k, nsc) = .true.
                                  flag_out(i, j, k, nsc) = 1
                               else

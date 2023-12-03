@@ -318,7 +318,7 @@ contains
 
          ! Calculate concentrations of unsteady species
          c = RHOmix*sol(1:nspec)/W_sp(1:nspec)
-         ! call get_thirdbodies(M, c)
+         call get_thirdbodies(M, c)
          call get_rate_coefficients(k, M, sol(nspec1), this%Pthermo)
          call get_reaction_rates(w, k, M, c)
          call get_production_rates(rhs, w)
