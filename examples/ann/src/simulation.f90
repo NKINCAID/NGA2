@@ -8,6 +8,7 @@ module simulation
    use vdscalar_class,    only: vdscalar
    use sgsmodel_class,    only: sgsmodel
    use aencoder_class,    only: aencoder
+   use nnetwork_class,    only: nnetwork
    use timetracker_class, only: timetracker
    use ensight_class,     only: ensight
    use event_class,       only: event
@@ -25,6 +26,7 @@ module simulation
 
    !> Machine learning interface
    type(aencoder) :: ae
+   type(nnetwork) :: nn
 
    !> Ensight postprocessing
    type(ensight) :: ens_out
@@ -328,14 +330,16 @@ contains
 
       create_mlinterface: block
          use string, only: str_medium
-         character(len=str_medium) :: aefname
-         ! Read in the data file name
+         character(len=str_medium) :: aefname,nnfname
+         ! Read in the data file names
          call param_read('Auto encoder file name',aefname)
-         ! Initialize the auto encoder
-         call ae%init(fdata=aefname,name='Auto Encoder')
-         ! Debug
-         print*,'File name: ',ae%filename
-         print*,'Object name: ',ae%name
+         call param_read('Neural network file name',nnfname)
+         ! Initialize the auto encoder object
+         call ae%init(cfg=cfg,fdata=aefname,name='Auto Encoder')
+         call ae%print()
+         ! Initialize the neural network object
+         call nn%init(cfg=cfg,fdata=nnfname,name='Neural network')
+         call nn%print()
       end block create_mlinterface
 
 

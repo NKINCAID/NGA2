@@ -1,6 +1,7 @@
 !> Auto encoder class:
 module aencoder_class
    use precision,         only: WP
+   use config_class,      only: config
    use multimatrix_class, only: multimatrix
    use mathtools,         only: ReLU
    implicit none
@@ -13,11 +14,11 @@ module aencoder_class
    type, extends(multimatrix) :: aencoder
 
       ! Indices of vectors
-      integer :: ivec_x_scale,ivec_y_scale                                           ! Scale
-      integer :: ivec_x_shift,ivec_y_shift                                           ! Shift
+      integer :: ivec_hid1_bias,ivec_hid2_bias,ivec_outp_bias ! Bias
+      integer :: ivec_x_scale,ivec_y_scale                    ! Scale
+      integer :: ivec_x_shift,ivec_y_shift                    ! Shift
 
       ! Indices of matrices
-      integer :: imat_hid1_bias,imat_hid2_bias,imat_outp_bias                        ! Bias
       integer :: imat_hid1_weight,imat_hid2_weight,imat_outp_weight,imat_proj_weight ! Weight
 
       ! Transposed matrices
@@ -38,32 +39,40 @@ contains
 
 
    !> Initialization for auto encoder object
-   subroutine init(this,fdata,name)
+   subroutine init(this,cfg,fdata,name)
       use messager, only: die
       implicit none
       class(aencoder) , intent(inout)        :: this
+      class(config), target, intent(in)      :: cfg
       character(len=*), intent(in)           :: fdata
       character(len=*), intent(in), optional :: name
       integer :: imatrix,ivector
 
-      ! Call the initialization from parrent
-      call this%initialize(fdata=fdata,name=name)
+      ! Call the initialization from parent type
+      call this%initialize(cfg=cfg,fdata=fdata,name=name)
 
       ! Set the vector indices
       do ivector=1,this%nvector
-        select case (trim(this%vecnames(ivector)))
-         case ('x_scale')
-           this%ivec_x_scale=ivector
-         case ('y_scale')
-           this%ivec_y_scale=ivector
-         case ('x_shift')
-           this%ivec_x_shift=ivector
-         case ('y_shift')
-           this%ivec_y_shift=ivector
+        select case (trim(this%vectors(ivector)%name))
+           case ('hidden1_bias')
+              this%ivec_hid1_bias=ivector
+           case ('hidden2_bias')
+              this%ivec_hid2_bias=ivector
+           case ('output_bias')
+              this%ivec_outp_bias=ivector
+           case ('x_scale')
+              this%ivec_x_scale=ivector
+           case ('y_scale')
+              this%ivec_y_scale=ivector
+           case ('x_shift')
+              this%ivec_x_shift=ivector
+           case ('y_shift')
+              this%ivec_y_shift=ivector
         end select
       end do
       if(                                                                             &
           max(                                                                        &
+              this%ivec_hid1_bias,this%ivec_hid2_bias,this%ivec_outp_bias,            &
               this%ivec_x_scale,this%ivec_y_scale,this%ivec_x_shift,this%ivec_y_shift &
              )                                                                        & 
           .ne.                                                                        & 
@@ -74,13 +83,7 @@ contains
 
       ! Set the matrix indices
       do imatrix=1,this%nmatrix
-         select case (trim(this%matnames(imatrix)))
-          case ('hidden1_bias')
-            this%imat_hid1_bias=imatrix
-          case ('hidden2_bias')
-            this%imat_hid2_bias=imatrix
-          case ('output_bias')
-            this%imat_outp_bias=imatrix
+         select case (trim(this%matrices(imatrix)%name))
           case ('hidden1_weight')
             this%imat_hid1_weight=imatrix
           case ('hidden2_weight')
@@ -93,7 +96,6 @@ contains
       end do
       if(                                                                                            &
          max(                                                                                        &
-             this%imat_hid1_bias,this%imat_hid2_bias,this%imat_outp_bias,                            &
              this%imat_hid1_weight,this%imat_hid2_weight,this%imat_outp_weight,this%imat_proj_weight &
             )                                                                                        & 
          .ne.                                                                                        & 
@@ -131,9 +133,9 @@ contains
       class(aencoder), intent(inout) :: this
       real(WP), dimension(:,:), intent(in)    :: input
       real(WP), dimension(:,:), intent(inout) :: output
-      output=ReLU(matmul(input ,this%hid1_weight_T)+this%matrices(this%imat_hid1_bias)%matrix)
-      output=ReLU(matmul(output,this%hid2_weight_T)+this%matrices(this%imat_hid2_bias)%matrix)
-      output=matmul(output,this%outp_weight_T)+this%matrices(this%imat_outp_bias)%matrix
+      ! output=ReLU(matmul(input ,this%hid1_weight_T)+this%vectors(this%ivec_hid1_bias)%vector)
+      ! output=ReLU(matmul(output,this%hid2_weight_T)+this%vectors(this%ivec_hid2_bias)%vector)
+      ! output=matmul(output,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
    end subroutine decode
 
 
