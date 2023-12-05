@@ -131,11 +131,11 @@ contains
    subroutine decode(this,input,output)
       implicit none
       class(aencoder), intent(inout) :: this
-      real(WP), dimension(:,:), intent(in)    :: input
-      real(WP), dimension(:,:), intent(inout) :: output
-      ! output=ReLU(matmul(input ,this%hid1_weight_T)+this%vectors(this%ivec_hid1_bias)%vector)
-      ! output=ReLU(matmul(output,this%hid2_weight_T)+this%vectors(this%ivec_hid2_bias)%vector)
-      ! output=matmul(output,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
+      real(WP), dimension(:), intent(in)    :: input
+      real(WP), dimension(:), intent(inout) :: output
+      output=ReLU(matmul(input ,this%hid1_weight_T)+this%vectors(this%ivec_hid1_bias)%vector)
+      output=ReLU(matmul(output,this%hid2_weight_T)+this%vectors(this%ivec_hid2_bias)%vector)
+      output=matmul(output,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
    end subroutine decode
 
 

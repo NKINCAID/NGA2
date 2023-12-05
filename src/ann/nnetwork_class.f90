@@ -113,11 +113,11 @@ contains
    subroutine predict(this,input,output)
       implicit none
       class(nnetwork), intent(inout) :: this
-      real(WP), dimension(:,:), intent(in)    :: input
-      real(WP), dimension(:,:), intent(inout) :: output
-      ! output=ReLU(matmul(input ,this%lay0_weight_T)+this%vectors(this%ivec_lay0_bias)%vector)
-      ! output=ReLU(matmul(output,this%lay1_weight_T)+this%vectors(this%ivec_lay1_bias)%vector)
-      ! output=matmul(output,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
+      real(WP), dimension(:), intent(in)    :: input
+      real(WP), dimension(:), intent(inout) :: output
+      output=ReLU(matmul(input ,this%lay0_weight_T)+this%vectors(this%ivec_lay0_bias)%vector)
+      output=ReLU(matmul(output,this%lay1_weight_T)+this%vectors(this%ivec_lay1_bias)%vector)
+      output=matmul(output,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
    end subroutine predict
 
 
