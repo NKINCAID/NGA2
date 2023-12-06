@@ -43,21 +43,26 @@ module multimatrix_class
       type(marr2D), dimension(:), allocatable :: matrices               !< 2D multi array contains entries of all the 2D arrays
 
    contains
-      procedure :: initialize                                           !< Initialization of the multi matrix
       procedure :: print=>multimatrix_print                             !< Output solver to the screen
    end type multimatrix
+
+
+   !> Declare multimatrix constructor
+   interface multimatrix
+      procedure constructor
+   end interface multimatrix
 
 
 contains
 
 
-   !> Initialization of the multi matrix object
-   subroutine initialize(this,cfg,fdata,name)
+   !> Default constructor for multimatrix
+   function constructor(cfg,fdata,name) result(self)
       use messager, only: die
       use parallel, only: info_mpiio,MPI_REAL_WP
       use mpi_f08
       implicit none
-      class(multimatrix), intent(inout)        :: this
+      type(multimatrix)                        :: self
       class(config), target, intent(in)        :: cfg
       character(len=*)  , intent(in)           :: fdata
       character(len=*)  , intent(in), optional :: name
@@ -67,62 +72,62 @@ contains
       integer :: imatrix,ivector,n_row,n_col,n_char,i
 
       ! Point to pgrid object
-      this%cfg=>cfg
+      self%cfg=>cfg
 
       ! Set the name for the multi matrix object
-      if (present(name)) this%name=trim(adjustl(name))
+      if (present(name)) self%name=trim(adjustl(name))
 
       ! Set the file name
-      this%filename=trim(adjustl(fdata))
+      self%filename=trim(adjustl(fdata))
 
       ! Open the file
-      call MPI_FILE_OPEN(this%cfg%comm,trim(this%filename),MPI_MODE_RDONLY,info_mpiio,ifile,ierr)
-      if (ierr.ne.0) call die('[multimatrix constructor] Problem encountered while reading file: '//trim(this%filename))
+      call MPI_FILE_OPEN(self%cfg%comm,trim(self%filename),MPI_MODE_RDONLY,info_mpiio,ifile,ierr)
+      if (ierr.ne.0) call die('[multimatrix constructor] Problem encountered while reading file: '//trim(self%filename))
 
       ! Read the number of vectors
-      call MPI_FILE_READ_ALL(ifile,this%nvector,1,MPI_INTEGER,status,ierr)
-      if (this%nvector.le.0) call die('[multimatrix constructor] multimatrix object requires at least 1 vector')
+      call MPI_FILE_READ_ALL(ifile,self%nvector,1,MPI_INTEGER,status,ierr)
+      if (self%nvector.le.0) call die('[multimatrix constructor] multimatrix object requires at least 1 vector')
 
       ! Allocate memory for vectors
-      allocate(this%vectors(1:this%nvector))
+      allocate(self%vectors(1:self%nvector))
 
       ! Read the vector data
-      do ivector=1,this%nvector
+      do ivector=1,self%nvector
          ! Name
          call MPI_FILE_READ_ALL(ifile,n_char,1,MPI_INTEGER,status,ierr)
-         allocate(character(n_char) :: this%vectors(ivector)%name)
-         call MPI_FILE_READ_ALL(ifile,this%vectors(ivector)%name,n_char,MPI_CHARACTER,status,ierr)
+         allocate(character(n_char) :: self%vectors(ivector)%name)
+         call MPI_FILE_READ_ALL(ifile,self%vectors(ivector)%name,n_char,MPI_CHARACTER,status,ierr)
          ! Size
          call MPI_FILE_READ_ALL(ifile,n_row,1,MPI_INTEGER,status,ierr)
-         allocate(this%vectors(ivector)%vector(n_row))
+         allocate(self%vectors(ivector)%vector(n_row))
          ! Entries
-         call MPI_FILE_READ_ALL(ifile,this%vectors(ivector)%vector,n_row,MPI_REAL_WP,status,ierr)
+         call MPI_FILE_READ_ALL(ifile,self%vectors(ivector)%vector,n_row,MPI_REAL_WP,status,ierr)
       end do
 
       ! Read the number of matrices
-      call MPI_FILE_READ_ALL(ifile,this%nmatrix,1,MPI_INTEGER,status,ierr)
-      if (this%nmatrix.le.0) call die('[multimatrix constructor] multimatrix object requires at least 1 matrix')
+      call MPI_FILE_READ_ALL(ifile,self%nmatrix,1,MPI_INTEGER,status,ierr)
+      if (self%nmatrix.le.0) call die('[multimatrix constructor] multimatrix object requires at least 1 matrix')
 
       ! Allocate memory for matrices
-      allocate(this%matrices(1:this%nmatrix))
+      allocate(self%matrices(1:self%nmatrix))
 
       ! Read the matrix data
-      do imatrix=1,this%nmatrix
+      do imatrix=1,self%nmatrix
          ! Name
          call MPI_FILE_READ_ALL(ifile,n_char,1,MPI_INTEGER,status,ierr)
-         allocate(character(n_char) :: this%matrices(imatrix)%name)
-         call MPI_FILE_READ_ALL(ifile,this%matrices(imatrix)%name,n_char,MPI_CHARACTER,status,ierr)
+         allocate(character(n_char) :: self%matrices(imatrix)%name)
+         call MPI_FILE_READ_ALL(ifile,self%matrices(imatrix)%name,n_char,MPI_CHARACTER,status,ierr)
          ! Size
          call MPI_FILE_READ_ALL(ifile,n_row,1,MPI_INTEGER,status,ierr)
          call MPI_FILE_READ_ALL(ifile,n_col,1,MPI_INTEGER,status,ierr)
-         allocate(this%matrices(imatrix)%matrix(n_row,n_col))
+         allocate(self%matrices(imatrix)%matrix(n_row,n_col))
          ! Entries
-         call MPI_FILE_READ_ALL(ifile,this%matrices(imatrix)%matrix,n_row*n_col,MPI_REAL_WP,status,ierr)
+         call MPI_FILE_READ_ALL(ifile,self%matrices(imatrix)%matrix,n_row*n_col,MPI_REAL_WP,status,ierr)
       end do
 
       ! Close the file
       call MPI_FILE_CLOSE(ifile,ierr)
-   end subroutine initialize
+   end function constructor
 
 
    !> Print out info for multi matrix object

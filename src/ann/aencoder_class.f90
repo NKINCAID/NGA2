@@ -27,7 +27,6 @@ module aencoder_class
       real(WP), dimension(:,:), allocatable :: outp_weight_T
 
    contains
-      procedure :: init                      !< Initialization of the auto encoder
       procedure :: encode                    !< Encode
       procedure :: decode                    !< Decode
       procedure :: transform_inputs          !< Transform inputs
@@ -35,87 +34,93 @@ module aencoder_class
    end type aencoder
 
 
+   !> Declare aencoder constructor
+   interface aencoder
+      procedure constructor
+   end interface aencoder
+
+
 contains
 
 
-   !> Initialization for auto encoder object
-   subroutine init(this,cfg,fdata,name)
+   !> Default constructor for aencoder
+   function constructor(cfg,fdata,name) result(self)
       use messager, only: die
       implicit none
-      class(aencoder) , intent(inout)        :: this
+      type(aencoder)                         :: self
       class(config), target, intent(in)      :: cfg
       character(len=*), intent(in)           :: fdata
       character(len=*), intent(in), optional :: name
       integer :: imatrix,ivector
 
-      ! Call the initialization from parent type
-      call this%initialize(cfg=cfg,fdata=fdata,name=name)
+      ! Construct the parent object
+      self%multimatrix=multimatrix(cfg=cfg,fdata=fdata,name=name)
 
       ! Set the vector indices
-      do ivector=1,this%nvector
-        select case (trim(this%vectors(ivector)%name))
-           case ('hidden1_bias')
-              this%ivec_hid1_bias=ivector
-           case ('hidden2_bias')
-              this%ivec_hid2_bias=ivector
-           case ('output_bias')
-              this%ivec_outp_bias=ivector
-           case ('x_scale')
-              this%ivec_x_scale=ivector
-           case ('y_scale')
-              this%ivec_y_scale=ivector
-           case ('x_shift')
-              this%ivec_x_shift=ivector
-           case ('y_shift')
-              this%ivec_y_shift=ivector
-        end select
+      do ivector=1,self%nvector
+         select case (trim(self%vectors(ivector)%name))
+            case ('hidden1_bias')
+               self%ivec_hid1_bias=ivector
+            case ('hidden2_bias')
+               self%ivec_hid2_bias=ivector
+            case ('output_bias')
+               self%ivec_outp_bias=ivector
+            case ('x_scale')
+               self%ivec_x_scale=ivector
+            case ('y_scale')
+               self%ivec_y_scale=ivector
+            case ('x_shift')
+               self%ivec_x_shift=ivector
+            case ('y_shift')
+               self%ivec_y_shift=ivector
+         end select
       end do
       if(                                                                             &
           max(                                                                        &
-              this%ivec_hid1_bias,this%ivec_hid2_bias,this%ivec_outp_bias,            &
-              this%ivec_x_scale,this%ivec_y_scale,this%ivec_x_shift,this%ivec_y_shift &
+              self%ivec_hid1_bias,self%ivec_hid2_bias,self%ivec_outp_bias,            &
+              self%ivec_x_scale,self%ivec_y_scale,self%ivec_x_shift,self%ivec_y_shift &
              )                                                                        & 
           .ne.                                                                        & 
-          this%nvector                                                                &
+          self%nvector                                                                &
          ) then
-           call die('[aencoder init] Inconsistent number of vectors')
+           call die('[aencoder constructor] Inconsistent number of vectors')
       end if
 
       ! Set the matrix indices
-      do imatrix=1,this%nmatrix
-         select case (trim(this%matrices(imatrix)%name))
+      do imatrix=1,self%nmatrix
+         select case (trim(self%matrices(imatrix)%name))
           case ('hidden1_weight')
-            this%imat_hid1_weight=imatrix
+            self%imat_hid1_weight=imatrix
           case ('hidden2_weight')
-            this%imat_hid2_weight=imatrix
+            self%imat_hid2_weight=imatrix
           case ('output_weight')
-            this%imat_outp_weight=imatrix
+            self%imat_outp_weight=imatrix
           case ('project_weight')
-            this%imat_proj_weight=imatrix
+            self%imat_proj_weight=imatrix
          end select
       end do
       if(                                                                                            &
          max(                                                                                        &
-             this%imat_hid1_weight,this%imat_hid2_weight,this%imat_outp_weight,this%imat_proj_weight &
+             self%imat_hid1_weight,self%imat_hid2_weight,self%imat_outp_weight,self%imat_proj_weight &
             )                                                                                        & 
          .ne.                                                                                        & 
-         this%nmatrix                                                                                &
+         self%nmatrix                                                                                &
         ) then
-          call die('[aencoder init] Inconsistent number of matrices')
+          call die('[aencoder constructor] Inconsistent number of matrices')
       end if
 
       ! Allocate transposed matrices
-      allocate(this%proj_weight_T(size(this%matrices(this%imat_proj_weight)%matrix,dim=2),size(this%matrices(this%imat_proj_weight)%matrix,dim=1)))
-      allocate(this%hid1_weight_T(size(this%matrices(this%imat_hid1_weight)%matrix,dim=2),size(this%matrices(this%imat_hid1_weight)%matrix,dim=1)))
-      allocate(this%hid2_weight_T(size(this%matrices(this%imat_hid2_weight)%matrix,dim=2),size(this%matrices(this%imat_hid2_weight)%matrix,dim=1)))
-      allocate(this%outp_weight_T(size(this%matrices(this%imat_outp_weight)%matrix,dim=2),size(this%matrices(this%imat_outp_weight)%matrix,dim=1)))
+      allocate(self%proj_weight_T(size(self%matrices(self%imat_proj_weight)%matrix,dim=2),size(self%matrices(self%imat_proj_weight)%matrix,dim=1)))
+      allocate(self%hid1_weight_T(size(self%matrices(self%imat_hid1_weight)%matrix,dim=2),size(self%matrices(self%imat_hid1_weight)%matrix,dim=1)))
+      allocate(self%hid2_weight_T(size(self%matrices(self%imat_hid2_weight)%matrix,dim=2),size(self%matrices(self%imat_hid2_weight)%matrix,dim=1)))
+      allocate(self%outp_weight_T(size(self%matrices(self%imat_outp_weight)%matrix,dim=2),size(self%matrices(self%imat_outp_weight)%matrix,dim=1)))
 
       ! Get the transposed matrices
-      this%proj_weight_T=transpose(this%matrices(this%imat_proj_weight)%matrix)
-      this%hid1_weight_T=transpose(this%matrices(this%imat_hid1_weight)%matrix)
-      this%hid2_weight_T=transpose(this%matrices(this%imat_hid2_weight)%matrix)
-      this%outp_weight_T=transpose(this%matrices(this%imat_outp_weight)%matrix)
-   end subroutine init
+      self%proj_weight_T=transpose(self%matrices(self%imat_proj_weight)%matrix)
+      self%hid1_weight_T=transpose(self%matrices(self%imat_hid1_weight)%matrix)
+      self%hid2_weight_T=transpose(self%matrices(self%imat_hid2_weight)%matrix)
+      self%outp_weight_T=transpose(self%matrices(self%imat_outp_weight)%matrix)
+   end function constructor
 
    !> Encode
    subroutine encode(this,input,output)

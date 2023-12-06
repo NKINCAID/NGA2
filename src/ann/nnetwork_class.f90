@@ -26,88 +26,93 @@ module nnetwork_class
       real(WP), dimension(:,:), allocatable :: outp_weight_T
 
    contains
-      procedure :: init    !< Initialization of the neural network
       procedure :: predict !< Predict
    end type nnetwork
+
+
+   !> Declare nnetwork constructor
+   interface nnetwork
+      procedure constructor
+   end interface nnetwork
 
 
 contains
 
 
-   !> Initialization for neural network object
-   subroutine init(this,cfg,fdata,name)
+   !> Default constructor for nnetwork
+   function constructor(cfg,fdata,name) result(self)
       use messager, only: die
       implicit none
-      class(nnetwork) , intent(inout)        :: this
+      type(nnetwork)                         :: self
       class(config), target, intent(in)      :: cfg
       character(len=*), intent(in)           :: fdata
       character(len=*), intent(in), optional :: name
       integer :: ivector,imatrix
 
-      ! Call the initialization from parent type
-      call this%initialize(cfg=cfg,fdata=fdata,name=name)
+      ! Construct the parent object
+      self%multimatrix=multimatrix(cfg=cfg,fdata=fdata,name=name)
 
       ! Set the vector indices
-      do ivector=1,this%nvector
-         select case (trim(this%vectors(ivector)%name))
+      do ivector=1,self%nvector
+         select case (trim(self%vectors(ivector)%name))
             case ('layers_0_bias')
-               this%ivec_lay0_bias=ivector
+               self%ivec_lay0_bias=ivector
             case ('layers_1_bias')
-               this%ivec_lay1_bias=ivector
+               self%ivec_lay1_bias=ivector
             case ('output_bias')
-               this%ivec_outp_bias=ivector
+               self%ivec_outp_bias=ivector
             case ('x_scale')
-               this%ivec_x_scale=ivector
+               self%ivec_x_scale=ivector
             case ('y_scale')
-               this%ivec_y_scale=ivector
+               self%ivec_y_scale=ivector
             case ('x_shift')
-               this%ivec_x_shift=ivector
+               self%ivec_x_shift=ivector
             case ('y_shift')
-               this%ivec_y_shift=ivector
+               self%ivec_y_shift=ivector
          end select
       end do
       if(                                                                            &
          max(                                                                        &
-             this%ivec_lay0_bias,this%ivec_lay1_bias,this%ivec_outp_bias,            &
-             this%ivec_x_scale,this%ivec_y_scale,this%ivec_x_shift,this%ivec_y_shift &
+             self%ivec_lay0_bias,self%ivec_lay1_bias,self%ivec_outp_bias,            &
+             self%ivec_x_scale,self%ivec_y_scale,self%ivec_x_shift,self%ivec_y_shift &
             )                                                                        & 
          .ne.                                                                        & 
-         this%nvector                                                                &
+         self%nvector                                                                &
         ) then
-          call die('[nnetwork init] Inconsistent number of vectors')
+          call die('[nnetwork constructor] Inconsistent number of vectors')
       end if
 
       ! Set the matrix indices
-      do imatrix=1,this%nmatrix
-         select case (trim(this%matrices(imatrix)%name))
+      do imatrix=1,self%nmatrix
+         select case (trim(self%matrices(imatrix)%name))
          case ('layers_0_weight')
-            this%imat_lay0_weight=imatrix
+            self%imat_lay0_weight=imatrix
          case ('layers_1_weight')
-            this%imat_lay1_weight=imatrix
+            self%imat_lay1_weight=imatrix
          case ('output_weight')
-            this%imat_outp_weight=imatrix
+            self%imat_outp_weight=imatrix
          end select
       end do
       if(                                                                      &
          max(                                                                  &
-             this%imat_lay0_weight,this%imat_lay1_weight,this%imat_outp_weight &
+             self%imat_lay0_weight,self%imat_lay1_weight,self%imat_outp_weight &
             )                                                                  & 
          .ne.                                                                  & 
-         this%nmatrix                                                          &
+         self%nmatrix                                                          &
         ) then
-          call die('[nnetwork init] Inconsistent number of matrices')
+          call die('[nnetwork constructor] Inconsistent number of matrices')
       end if
 
       ! Allocate memory for the transposed matrices
-      allocate(this%lay0_weight_T(size(this%matrices(this%imat_lay0_weight)%matrix,dim=2),size(this%matrices(this%imat_lay0_weight)%matrix,dim=1)))
-      allocate(this%lay1_weight_T(size(this%matrices(this%imat_lay1_weight)%matrix,dim=2),size(this%matrices(this%imat_lay1_weight)%matrix,dim=1)))
-      allocate(this%outp_weight_T(size(this%matrices(this%imat_outp_weight)%matrix,dim=2),size(this%matrices(this%imat_outp_weight)%matrix,dim=1)))
+      allocate(self%lay0_weight_T(size(self%matrices(self%imat_lay0_weight)%matrix,dim=2),size(self%matrices(self%imat_lay0_weight)%matrix,dim=1)))
+      allocate(self%lay1_weight_T(size(self%matrices(self%imat_lay1_weight)%matrix,dim=2),size(self%matrices(self%imat_lay1_weight)%matrix,dim=1)))
+      allocate(self%outp_weight_T(size(self%matrices(self%imat_outp_weight)%matrix,dim=2),size(self%matrices(self%imat_outp_weight)%matrix,dim=1)))
 
       ! Get the transposed matrices
-      this%lay0_weight_T=transpose(this%matrices(this%imat_lay0_weight)%matrix)
-      this%lay1_weight_T=transpose(this%matrices(this%imat_lay1_weight)%matrix)
-      this%outp_weight_T=transpose(this%matrices(this%imat_outp_weight)%matrix)
-   end subroutine init
+      self%lay0_weight_T=transpose(self%matrices(self%imat_lay0_weight)%matrix)
+      self%lay1_weight_T=transpose(self%matrices(self%imat_lay1_weight)%matrix)
+      self%outp_weight_T=transpose(self%matrices(self%imat_outp_weight)%matrix)
+   end function constructor
 
 
    subroutine predict(this,input,output)

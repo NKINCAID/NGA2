@@ -328,19 +328,19 @@ contains
       end block create_sgs
 
 
-      create_mlinterface: block
+      create_ml_interface: block
          use string, only: str_medium
          character(len=str_medium) :: aefname,nnfname
          ! Read in the data file names
          call param_read('Auto encoder file name',aefname)
          call param_read('Neural network file name',nnfname)
-         ! Initialize the auto encoder object
-         call ae%init(cfg=cfg,fdata=aefname,name='Auto Encoder')
+         ! The auto encoder object
+         ae=aencoder(cfg=cfg,fdata=aefname,name='Auto Encoder')
          call ae%print()
-         ! Initialize the neural network object
-         call nn%init(cfg=cfg,fdata=nnfname,name='Neural network')
+         ! The neural network object
+         nn=nnetwork(cfg=cfg,fdata=nnfname,name='Neural network')
          call nn%print()
-      end block create_mlinterface
+      end block create_ml_interface
 
 
       ! Allocate work arrays
