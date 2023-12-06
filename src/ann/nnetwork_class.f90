@@ -14,19 +14,21 @@ module nnetwork_class
    type, extends(multimatrix) :: nnetwork
 
       ! Indices of vectors
-      integer :: ivec_lay0_bias,ivec_lay1_bias,ivec_outp_bias ! Bias
-      integer :: ivec_x_scale,ivec_y_scale                    ! Scale
-      integer :: ivec_x_shift,ivec_y_shift                    ! Shift
+      integer :: ivec_lay0_bias,ivec_lay1_bias,ivec_outp_bias              ! Bias
+      integer :: ivec_x_scale,ivec_y_scale                                 ! Scale
+      integer :: ivec_x_shift,ivec_y_shift                                 ! Shift
 
       ! Indices of matrices
-      integer :: imat_lay0_weight,imat_lay1_weight,imat_outp_weight ! Weight
+      integer :: imat_lay0_weight,imat_lay1_weight,imat_outp_weight        ! Weight
 
       ! Transposed matrices
       real(WP), dimension(:,:), allocatable :: lay0_weight_T,lay1_weight_T
       real(WP), dimension(:,:), allocatable :: outp_weight_T
 
    contains
-      procedure :: predict !< Predict
+
+      procedure :: predict                                                 !< Predict
+
    end type nnetwork
 
 
@@ -117,9 +119,10 @@ contains
 
    subroutine predict(this,input,output)
       implicit none
-      class(nnetwork), intent(inout) :: this
+      class(nnetwork), intent(inout)        :: this
       real(WP), dimension(:), intent(in)    :: input
       real(WP), dimension(:), intent(inout) :: output
+
       output=ReLU(matmul(input ,this%lay0_weight_T)+this%vectors(this%ivec_lay0_bias)%vector)
       output=ReLU(matmul(output,this%lay1_weight_T)+this%vectors(this%ivec_lay1_bias)%vector)
       output=matmul(output,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector

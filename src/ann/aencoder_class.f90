@@ -14,9 +14,9 @@ module aencoder_class
    type, extends(multimatrix) :: aencoder
 
       ! Indices of vectors
-      integer :: ivec_hid1_bias,ivec_hid2_bias,ivec_outp_bias ! Bias
-      integer :: ivec_x_scale,ivec_y_scale                    ! Scale
-      integer :: ivec_x_shift,ivec_y_shift                    ! Shift
+      integer :: ivec_hid1_bias,ivec_hid2_bias,ivec_outp_bias                        ! Bias
+      integer :: ivec_x_scale,ivec_y_scale                                           ! Scale
+      integer :: ivec_x_shift,ivec_y_shift                                           ! Shift
 
       ! Indices of matrices
       integer :: imat_hid1_weight,imat_hid2_weight,imat_outp_weight,imat_proj_weight ! Weight
@@ -27,10 +27,12 @@ module aencoder_class
       real(WP), dimension(:,:), allocatable :: outp_weight_T
 
    contains
-      procedure :: encode                    !< Encode
-      procedure :: decode                    !< Decode
-      procedure :: transform_inputs          !< Transform inputs
-      procedure :: inverse_transform_outputs !< Inverse transform outputs
+
+      procedure :: encode                                                            !< Encode
+      procedure :: decode                                                            !< Decode
+      procedure :: transform_inputs                                                  !< Transform inputs
+      procedure :: inverse_transform_outputs                                         !< Inverse transform outputs
+
    end type aencoder
 
 
@@ -125,9 +127,10 @@ contains
    !> Encode
    subroutine encode(this,input,output)
       implicit none
-      class(aencoder), intent(in) :: this
+      class(aencoder), intent(in)             :: this
       real(WP), dimension(:,:), intent(in)    :: input
       real(WP), dimension(:,:), intent(inout) :: output
+
       output=matmul(input,this%proj_weight_T)
    end subroutine encode
 
@@ -135,9 +138,10 @@ contains
    !> Decode
    subroutine decode(this,input,output)
       implicit none
-      class(aencoder), intent(inout) :: this
+      class(aencoder), intent(inout)        :: this
       real(WP), dimension(:), intent(in)    :: input
       real(WP), dimension(:), intent(inout) :: output
+
       output=ReLU(matmul(input ,this%hid1_weight_T)+this%vectors(this%ivec_hid1_bias)%vector)
       output=ReLU(matmul(output,this%hid2_weight_T)+this%vectors(this%ivec_hid2_bias)%vector)
       output=matmul(output,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
@@ -147,9 +151,10 @@ contains
    !> Transform inputs
    subroutine transform_inputs(this,input,output)
       implicit none
-      class(aencoder), intent(inout) :: this
+      class(aencoder), intent(inout)          :: this
       real(WP), dimension(:,:), intent(in)    :: input
       real(WP), dimension(:,:), intent(inout) :: output
+
       output=(input-this%matrices(this%ivec_x_shift)%matrix)/this%matrices(this%ivec_x_scale)%matrix
    end subroutine transform_inputs
 
@@ -157,9 +162,10 @@ contains
    !> Inverse transform outputs
    subroutine inverse_transform_outputs(this,input,output)
       implicit none
-      class(aencoder), intent(inout) :: this
+      class(aencoder), intent(inout)          :: this
       real(WP), dimension(:,:), intent(in)    :: input
       real(WP), dimension(:,:), intent(inout) :: output
+      
       output=input*this%matrices(this%ivec_y_scale)%matrix+this%matrices(this%ivec_y_shift)%matrix
    end subroutine inverse_transform_outputs
 

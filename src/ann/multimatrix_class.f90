@@ -19,31 +19,33 @@ module multimatrix_class
    type :: marr2D
       real(WP), dimension(:,:), allocatable :: matrix
       character(:), allocatable :: name
-      end type marr2D
+   end type marr2D
 
 
    !> Multi matrix object definition
    type :: multimatrix
 
       ! This is our config
-      class(config), pointer :: cfg                                     !< This is the config the solver is build for
+      class(config), pointer :: cfg                           !< This is the config the solver is build for
 
       ! This is the name of the multi matrix
-      character(len=str_medium) :: name='UNNAMED_MULTIMATRIX'           !< Multi matrix name (default=UNNAMED_MULTIMATRIX)
+      character(len=str_medium) :: name='UNNAMED_MULTIMATRIX' !< Multi matrix name (default=UNNAMED_MULTIMATRIX)
 
       ! Data file name
-      character(len=str_medium) :: filename                             !< Name of datafile to read
+      character(len=str_medium) :: filename                   !< Name of datafile to read
 
       ! 1D arrays
-      integer :: nvector                                                !< Number of vectors
-      type(marr1D), dimension(:), allocatable :: vectors                !< 1D multi array contains entries of all the 1D arrays
+      integer :: nvector                                      !< Number of vectors
+      type(marr1D), dimension(:), allocatable :: vectors      !< 1D multi array contains entries of all the 1D arrays
       
       ! 2D arrays
-      integer :: nmatrix                                                !< Number of matrices
-      type(marr2D), dimension(:), allocatable :: matrices               !< 2D multi array contains entries of all the 2D arrays
+      integer :: nmatrix                                      !< Number of matrices
+      type(marr2D), dimension(:), allocatable :: matrices     !< 2D multi array contains entries of all the 2D arrays
 
    contains
-      procedure :: print=>multimatrix_print                             !< Output solver to the screen
+
+      procedure :: print=>multimatrix_print                   !< Output solver to the screen
+
    end type multimatrix
 
 
@@ -140,7 +142,6 @@ contains
       if (this%cfg%amRoot) then
          write(output_unit,'("Multi matrix object [",a,"] containing [",i5,"] vectors and [",i5,"] matrices was read from file [",a,"].")') trim(this%name),this%nvector,this%nmatrix,trim(this%filename)
       end if
-      
    end subroutine multimatrix_print
 
 
