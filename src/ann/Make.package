@@ -1,4 +1,4 @@
-f90EXE_sources += multimatrix_class.f90 aencoder_class.f90 nnetwork_class.f90
+f90EXE_sources += multimatrix_class.f90 aencodernet_class.f90 chsourcenet_class.f90 trnsportnet_class.f90
 
 INCLUDE_LOCATIONS += $(NGA_HOME)/src/ann
 VPATH_LOCATIONS   += $(NGA_HOME)/src/ann

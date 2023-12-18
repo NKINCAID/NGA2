@@ -1,5 +1,5 @@
-!> Auto encoder class:
-module aencoder_class
+!> Auto encoder network class:
+module aencodernet_class
    use precision,         only: WP
    use config_class,      only: config
    use multimatrix_class, only: multimatrix
@@ -7,19 +7,20 @@ module aencoder_class
    implicit none
    private
 
-   public :: aencoder
+   public :: aencodernet
 
 
-   !> Auto encoder object definition
-   type, extends(multimatrix) :: aencoder
+   !> Auto encoder network object definition
+   type, extends(multimatrix) :: aencodernet
 
       ! Indices of vectors
-      integer :: ivec_hid1_bias,ivec_hid2_bias,ivec_outp_bias                        ! Bias
-      integer :: ivec_x_scale,ivec_y_scale                                           ! Scale
-      integer :: ivec_x_shift,ivec_y_shift                                           ! Shift
+      integer :: ivec_spec_inds                                                      !< Indices of species used to construct reduced space
+      integer :: ivec_hid1_bias,ivec_hid2_bias,ivec_outp_bias                        !< Bias
+      integer :: ivec_x_scale,ivec_y_scale                                           !< Scale
+      integer :: ivec_x_shift,ivec_y_shift                                           !< Shift
 
       ! Indices of matrices
-      integer :: imat_hid1_weight,imat_hid2_weight,imat_outp_weight,imat_proj_weight ! Weight
+      integer :: imat_hid1_weight,imat_hid2_weight,imat_outp_weight,imat_proj_weight !< Weight
 
       ! Transposed matrices
       real(WP), dimension(:,:), allocatable :: proj_weight_T
@@ -33,23 +34,23 @@ module aencoder_class
       procedure :: transform_inputs                                                  !< Transform inputs
       procedure :: inverse_transform_outputs                                         !< Inverse transform outputs
 
-   end type aencoder
+   end type aencodernet
 
 
-   !> Declare aencoder constructor
-   interface aencoder
+   !> Declare aencodernet constructor
+   interface aencodernet
       procedure constructor
-   end interface aencoder
+   end interface aencodernet
 
 
 contains
 
 
-   !> Default constructor for aencoder
+   !> Default constructor for aencodernet
    function constructor(cfg,fdata,name) result(self)
       use messager, only: die
       implicit none
-      type(aencoder)                         :: self
+      type(aencodernet)                      :: self
       class(config), target, intent(in)      :: cfg
       character(len=*), intent(in)           :: fdata
       character(len=*), intent(in), optional :: name
@@ -61,6 +62,8 @@ contains
       ! Set the vector indices
       do ivector=1,self%nvector
          select case (trim(self%vectors(ivector)%name))
+            case ('spec_inds')
+               self%ivec_spec_inds=ivector
             case ('hidden1_bias')
                self%ivec_hid1_bias=ivector
             case ('hidden2_bias')
@@ -79,13 +82,14 @@ contains
       end do
       if(                                                                             &
           max(                                                                        &
+              self%ivec_spec_inds,                                                    &
               self%ivec_hid1_bias,self%ivec_hid2_bias,self%ivec_outp_bias,            &
               self%ivec_x_scale,self%ivec_y_scale,self%ivec_x_shift,self%ivec_y_shift &
              )                                                                        & 
           .ne.                                                                        & 
           self%nvector                                                                &
          ) then
-           call die('[aencoder constructor] Inconsistent number of vectors')
+           call die('[aencodernet constructor] Inconsistent number of vectors')
       end if
 
       ! Set the matrix indices
@@ -108,7 +112,7 @@ contains
          .ne.                                                                                        & 
          self%nmatrix                                                                                &
         ) then
-          call die('[aencoder constructor] Inconsistent number of matrices')
+          call die('[aencodernet constructor] Inconsistent number of matrices')
       end if
 
       ! Allocate transposed matrices
@@ -127,9 +131,9 @@ contains
    !> Encode
    subroutine encode(this,input,output)
       implicit none
-      class(aencoder), intent(in)             :: this
-      real(WP), dimension(:,:), intent(in)    :: input
-      real(WP), dimension(:,:), intent(inout) :: output
+      class(aencodernet), intent(in)        :: this
+      real(WP), dimension(:), intent(in)    :: input
+      real(WP), dimension(:), intent(inout) :: output
 
       output=matmul(input,this%proj_weight_T)
    end subroutine encode
@@ -138,7 +142,7 @@ contains
    !> Decode
    subroutine decode(this,input,output)
       implicit none
-      class(aencoder), intent(inout)        :: this
+      class(aencodernet), intent(inout)     :: this
       real(WP), dimension(:), intent(in)    :: input
       real(WP), dimension(:), intent(inout) :: output
 
@@ -151,23 +155,23 @@ contains
    !> Transform inputs
    subroutine transform_inputs(this,input,output)
       implicit none
-      class(aencoder), intent(inout)          :: this
-      real(WP), dimension(:,:), intent(in)    :: input
-      real(WP), dimension(:,:), intent(inout) :: output
+      class(aencodernet), intent(inout)     :: this
+      real(WP), dimension(:), intent(in)    :: input
+      real(WP), dimension(:), intent(inout) :: output
 
-      output=(input-this%matrices(this%ivec_x_shift)%matrix)/this%matrices(this%ivec_x_scale)%matrix
+      output=(input-this%vectors(this%ivec_x_shift)%vector)/this%vectors(this%ivec_x_scale)%vector
    end subroutine transform_inputs
 
 
    !> Inverse transform outputs
    subroutine inverse_transform_outputs(this,input,output)
       implicit none
-      class(aencoder), intent(inout)          :: this
-      real(WP), dimension(:,:), intent(in)    :: input
-      real(WP), dimension(:,:), intent(inout) :: output
+      class(aencodernet), intent(inout)     :: this
+      real(WP), dimension(:), intent(in)    :: input
+      real(WP), dimension(:), intent(inout) :: output
       
-      output=input*this%matrices(this%ivec_y_scale)%matrix+this%matrices(this%ivec_y_shift)%matrix
+      output=input*this%vectors(this%ivec_y_scale)%vector+this%vectors(this%ivec_y_shift)%vector
    end subroutine inverse_transform_outputs
 
 
-end module aencoder_class
+end module aencodernet_class

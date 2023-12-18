@@ -26,7 +26,7 @@ module multimatrix_class
    type :: multimatrix
 
       ! This is our config
-      class(config), pointer :: cfg                           !< This is the config the solver is build for
+      class(config), pointer :: cfg                           !< This is the config
 
       ! This is the name of the multi matrix
       character(len=str_medium) :: name='UNNAMED_MULTIMATRIX' !< Multi matrix name (default=UNNAMED_MULTIMATRIX)
@@ -44,7 +44,7 @@ module multimatrix_class
 
    contains
 
-      procedure :: print=>multimatrix_print                   !< Output solver to the screen
+      procedure :: print=>multimatrix_print                   !< Output to the screen
 
    end type multimatrix
 
