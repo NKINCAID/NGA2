@@ -145,10 +145,12 @@ contains
       class(aencodernet), intent(inout)     :: this
       real(WP), dimension(:), intent(in)    :: input
       real(WP), dimension(:), intent(inout) :: output
+      real(WP), dimension(:), allocatable   :: tmp_arr
 
-      output=ReLU(matmul(input ,this%hid1_weight_T)+this%vectors(this%ivec_hid1_bias)%vector)
-      output=ReLU(matmul(output,this%hid2_weight_T)+this%vectors(this%ivec_hid2_bias)%vector)
-      output=matmul(output,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
+      allocate(tmp_arr(size(this%hid2_weight_T,dim=1)))
+      tmp_arr=ReLU(matmul(input ,this%hid1_weight_T)+this%vectors(this%ivec_hid1_bias)%vector)
+      tmp_arr=ReLU(matmul(tmp_arr,this%hid2_weight_T)+this%vectors(this%ivec_hid2_bias)%vector)
+      output=matmul(tmp_arr,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
    end subroutine decode
 
 

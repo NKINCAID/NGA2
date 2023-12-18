@@ -41,18 +41,6 @@ module simulation
 
 contains
 
-   
-   !> Get enthalpy
-   ! subroutine get_enthalpy()
-   !    implicit none
-   !    integer :: n
-   !    h=0.0_WP
-   !    call fcmech_thermodata(T)
-   !    do n=1,nspec
-   !       h=h+hsp(n)*Y(n)
-   !    end do
-   ! end subroutine get_enthalpy
-
 
    !> Initialization of problem solver
    subroutine simulation_init
@@ -103,19 +91,19 @@ contains
 
       ! Initialize scalars
       initialize_scalar: block
-         integer :: n
+         integer :: ispec
          ! Get the species names
          call fcmech_get_speciesnames(spec_name)
          ! Get the indices
-         do n=1,nspec
-            if (spec_name(n).eq.'XC12H26') then
-               isc_dodecane=n
-            elseif (spec_name(n).eq.'HMN') then
-               isc_isocetane=n
-            elseif (spec_name(n).eq.'O2') then
-               isc_o2=n
-            elseif (spec_name(n).eq.'N2') then
-               isc_n2=n
+         do ispec=1,nspec
+            if (spec_name(ispec).eq.'XC12H26') then
+               isc_dodecane=ispec
+            elseif (spec_name(ispec).eq.'HMN') then
+               isc_isocetane=ispec
+            elseif (spec_name(ispec).eq.'O2') then
+               isc_o2=ispec
+            elseif (spec_name(ispec).eq.'N2') then
+               isc_n2=ispec
             end if
          end do
          ! Initial values
@@ -135,8 +123,10 @@ contains
       create_monitor: block
          mfile=monitor(cfg%amRoot,'simulation')
          call mfile%add_column(time%t,'Time')
-         ! call mfile%add_column(Y(isc_dodecane),'Dodecane mass fraction')
-         ! call mfile%add_column(Y(isc_isocetane),'Iso-cetane mass fraction')
+         call mfile%add_column(Y(isc_dodecane),'Dodecane mass fraction')
+         call mfile%add_column(Y(isc_isocetane),'Iso-cetane mass fraction')
+         call mfile%add_column(Y(isc_o2),'O2 mass fraction')
+         call mfile%add_column(Y(isc_n2),'N2 mass fraction')
          call mfile%add_column(T,'Temperature')
          call mfile%write()
       end block create_monitor
@@ -148,7 +138,7 @@ contains
    !> Perform an NGA2 simulation
    subroutine simulation_run
       implicit none
-      integer :: i
+      integer :: ispec
 
 
       ! Perform time integration
@@ -175,10 +165,11 @@ contains
          end do
 
          ! Map the neural network scalars to Y and T
-         call aen%inverse_transform_outputs(Z,TYS)
-         T=TYS(1)
-         do i=1,nY_sub
-            Y(int(aen%vectors(aen%ivec_spec_inds)%vector(i)))=TYS(i+1)
+         call aen%decode(Z,TYS)
+         call aen%inverse_transform_outputs(TYS(1:nY_sub+1),hY)
+         T=hY(1)
+         do ispec=1,nY_sub
+            Y(int(aen%vectors(aen%ivec_spec_inds)%vector(ispec)))=hY(ispec+1)
          end do
 
          ! Output
@@ -195,6 +186,7 @@ contains
    subroutine simulation_final
       implicit none
 
+
       ! Get rid of all objects - need destructors
       ! monitor
       ! ensight
@@ -202,8 +194,9 @@ contains
       ! timetracker
 
       ! Deallocate work arrays
-      deallocate(Z,Zold,Z_src,Y)
+      deallocate(Z,Zold,Z_src,Y,hY,TYS)
 
+      
    end subroutine simulation_final
 
 

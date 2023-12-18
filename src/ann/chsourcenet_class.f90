@@ -128,10 +128,13 @@ contains
       class(chsourcenet), intent(inout)     :: this
       real(WP), dimension(:), intent(in)    :: input
       real(WP), dimension(:), intent(inout) :: output
-      output=ReLU(matmul(input ,this%lay0_weight_T)+this%vectors(this%ivec_lay0_bias)%vector)
-      output=ReLU(matmul(output,this%lay1_weight_T)+this%vectors(this%ivec_lay1_bias)%vector)
-      output=ReLU(matmul(output,this%lay2_weight_T)+this%vectors(this%ivec_lay2_bias)%vector)
-      output=matmul(output,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
+      real(WP), dimension(:), allocatable   :: tmp_arr
+
+      allocate(tmp_arr(size(this%lay1_weight_T,dim=1)))
+      tmp_arr=ReLU(matmul(input ,this%lay0_weight_T)+this%vectors(this%ivec_lay0_bias)%vector)
+      tmp_arr=ReLU(matmul(tmp_arr,this%lay1_weight_T)+this%vectors(this%ivec_lay1_bias)%vector)
+      tmp_arr=ReLU(matmul(tmp_arr,this%lay2_weight_T)+this%vectors(this%ivec_lay2_bias)%vector)
+      output=matmul(tmp_arr,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
    end subroutine get_src
 
 
