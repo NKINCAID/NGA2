@@ -5,6 +5,7 @@ module simulation
    use ddadi_class, only: ddadi
    use fft3d_class, only: fft3d
    use hypre_str_class, only: hypre_str
+   use hypre_uns_class, only: hypre_uns
    use lowmach_class, only: lowmach
    use vdscalar_class, only: vdscalar
    use multivdscalar_class, only: multivdscalar
@@ -20,6 +21,7 @@ module simulation
 
    !> Single low Mach flow solver and scalar solver and corresponding time tracker
    type(hypre_str), public :: ps
+   ! type(hypre_uns), public :: ps
    ! type(fft3d), public :: ps
    type(ddadi), public :: vs, ss
    type(lowmach), public :: fs
@@ -111,7 +113,8 @@ contains
 
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
-         use hypre_str_class, only: pcg_pfmg, smg
+         use hypre_str_class, only: pcg_pfmg, smg, gmres_pfmg, gmres, pcg
+         ! use hypre_uns_class, only: amg, pcg_amg, gmres_amg, bicgstab_amg, gmres
          use lowmach_class, only: dirichlet, clipped_neumann, slip, neumann
          real(WP) :: visc
          ! Create flow solver
@@ -124,6 +127,8 @@ contains
 
          ! ! Configure pressure solver
          ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
+         ! ps = hypre_uns(cfg=cfg, name='Pressure', method=smg, nst=7)
+
          ps%maxlevel = 18
          call param_read('Pressure iteration', ps%maxit)
          call param_read('Pressure tolerance', ps%rcvg)
@@ -447,7 +452,7 @@ contains
                use messager, only: die
                integer :: nsc
                integer :: i, j, k
-               logical, dimension(:, :, :), allocatable :: flag
+               logical, dimension(:, :, :, :), allocatable :: flag
 
                call fc%metric_reset()
 
@@ -461,7 +466,7 @@ contains
                ! Explicit calculation of drhoSC/dt from scalar equation
                call fc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
 
-               allocate (flag(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
+               allocate (flag(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_, fc%nscalar))
 
                do nsc = 1, fc%nscalar
                   ! Assemble explicit residual
@@ -471,18 +476,26 @@ contains
                end do
 
                ! Apply it to get explicit scalar prediction
-
-               do k = fc%cfg%kmino_, fc%cfg%kmaxo_
-                  do j = fc%cfg%jmino_, fc%cfg%jmaxo_
-                     do i = fc%cfg%imino_, fc%cfg%imaxo_
-                        scalar_loop: do nsc = 1, nspec
-                           if (SCtmp(i, j, k, nsc) .le. 0.0_WP .or. SCtmp(i, j, k, nsc) .ge. 1.0_WP) then
-                              flag(i, j, k) = .true.
-                              exit scalar_loop
+               do nsc = 1, fc%nscalar
+                  do k = fc%cfg%kmino_, fc%cfg%kmaxo_
+                     do j = fc%cfg%jmino_, fc%cfg%jmaxo_
+                        do i = fc%cfg%imino_, fc%cfg%imaxo_
+                           if (nsc .eq. nspec + 1) then
+                              if (SCtmp(i, j, k, nsc) .le. 290.0_WP .or. SCtmp(i, j, k, nsc) .ge. 4000.0_WP) then
+                                 flag(i, j, k, nsc) = .true.
+                              else
+                                 flag(i, j, k, nsc) = .false.
+                              end if
                            else
-                              flag(i, j, k) = .false.
+                              if (SCtmp(i, j, k, nsc) .le. 0.0_WP .or. SCtmp(i, j, k, nsc) .ge. 1.0_WP) then
+                                 flag(i, j, k, nsc) = .true.
+
+                              else
+                                 flag(i, j, k, nsc) = .false.
+
+                              end if
                            end if
-                        end do scalar_loop
+                        end do
                      end do
                   end do
                end do

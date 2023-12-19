@@ -100,9 +100,11 @@ module pdf_class
         real(WP), dimension(:, :, :), allocatable :: Z     !< Mixture fraction array
         real(WP), dimension(:, :, :), allocatable :: SV     !< Specific volume array
         real(WP), dimension(:, :, :), allocatable :: V        !< Volume array
-        real(WP), dimension(:, :, :), allocatable :: srcSV        !< Specific volume source array
+        real(WP), dimension(:, :, :), allocatable :: Vold        !< Specific volume source array
         real(WP), dimension(:, :, :), allocatable :: multi        !< Multiplicity array
         real(WP), dimension(:, :, :), allocatable :: gammat        !< Multiplicity array
+        real(WP), dimension(:, :, :), allocatable :: srcSC        !< Multiplicity array
+
 
         ! Control variables
         integer :: nppc                                       !< Desired number of particles per cell
@@ -204,9 +206,11 @@ contains
         allocate (self%Z(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%Z = 0.0_WP
         allocate (self%SV(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%SV = 0.0_WP
         allocate (self%V(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%V = 0.0_WP
-        allocate (self%srcSV(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%srcSV = 0.0_WP
+        allocate (self%Vold(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%Vold = 0.0_WP
         allocate (self%multi(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%multi = 0.0_WP
         allocate (self%gammat(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%gammat = 0.0_WP
+        allocate (self%srcSC(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%srcSC = 0.0_WP
+
         allocate (self%Yi(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_, nspec)); self%Yi = 0.0_WP
 
         allocate (self%npincell(self%cfg%imino_:self%cfg%imaxo_, self%cfg%jmino_:self%cfg%jmaxo_, self%cfg%kmino_:self%cfg%kmaxo_)); self%npincell = 0.0_WP
@@ -1977,6 +1981,8 @@ this%p(ip)%Yi = this%p(ip)%Yi + this%p(ip)%m*ms(i,j,k)*this%SV(i, j, k)*dt/(m_ol
         this%SV = 0.0_WP
         this%multi = 0.0_WP
 
+        this%srcSC = 0.0_WP
+
         ! ---------------------------------------------- !
         ! Compute mass-weighted values on Eulerian mesh -!
         ! ---------------------------------------------- !
@@ -1999,6 +2005,9 @@ this%p(ip)%Yi = this%p(ip)%Yi + this%p(ip)%m*ms(i,j,k)*this%SV(i, j, k)*dt/(m_ol
             ! Transfer mass-weighted particle multiplicity (i.e. mass itself)
             this%multi(myi, myj, myk) = this%multi(myi, myj, myk) + this%p(i)%multi*this%p(i)%m
         end do
+
+        ! PDFSC(i,j,k,ipSRCSV) = 2.0_WP*(PDFSC(i,j,k,ipSRCSV)-tmp16(i,j,k))/(PDFSC(i,j,k,ipSRCSV)+tmp16(i,j,k)+tiny(1.0_WP))
+        this%srcSC = 2.0_WP*(this%V-this%Vold)/(this%V+this%Vold+tiny(1.0_WP))
 
         ! Need to update boundaries!
         ! ---------------------------------------------- !
@@ -2062,6 +2071,8 @@ this%p(ip)%Yi = this%p(ip)%Yi + this%p(ip)%m*ms(i,j,k)*this%SV(i, j, k)*dt/(m_ol
                 end do
             end do
         end do
+
+
 
     contains
         subroutine update_boundary(this)
@@ -2216,6 +2227,9 @@ this%p(ip)%Yi = this%p(ip)%Yi + this%p(ip)%m*ms(i,j,k)*this%SV(i, j, k)*dt/(m_ol
                 end do
             end do
         end do
+
+        this%Vold = this%V
+
         logging: block
             use, intrinsic :: iso_fortran_env, only: output_unit
             use param, only: verbose

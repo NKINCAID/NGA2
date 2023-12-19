@@ -829,22 +829,22 @@ contains
       implicit none
       class(multivdscalar), intent(inout) :: this
       real(WP), dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:, 1:), intent(in) :: SC   !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_,1:nscalar)
-      logical, dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:), intent(in) :: flag !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
+      logical, dimension(this%cfg%imino_:, this%cfg%jmino_:, this%cfg%kmino_:, 1:), intent(in) :: flag !< Needs to be (imino_:imaxo_,jmino_:jmaxo_,kmino_:kmaxo_)
       integer :: i, j, k
       select case (this%scheme)
       case (bquick)
          do k = this%cfg%kmin_, this%cfg%kmax_ + 1
             do j = this%cfg%jmin_, this%cfg%jmax_ + 1
                do i = this%cfg%imin_, this%cfg%imax_ + 1
-                  if (any(flag(i - 1:i, j, k))) then
+                  if (any(flag(i - 1:i, j, k, :))) then
                      this%itpsc_xp(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
                      this%itpsc_xm(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
                   end if
-                  if (any(flag(i, j - 1:j, k))) then
+                  if (any(flag(i, j - 1:j, k, :))) then
                      this%itpsc_yp(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
                      this%itpsc_ym(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
                   end if
-                  if (any(flag(i, j, k - 1:k))) then
+                  if (any(flag(i, j, k - 1:k, :))) then
                      this%itpsc_zp(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
                      this%itpsc_zm(:, i, j, k) = [0.0_WP, 1.0_WP, 0.0_WP]
                   end if

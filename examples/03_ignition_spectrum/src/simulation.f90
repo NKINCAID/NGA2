@@ -48,8 +48,8 @@ module simulation
    real(WP) :: visc,meanU,meanV,meanW
    real(WP) :: Urms0,TKE0,EPS0,Re_max
    real(WP) :: TKE,URMS
-   real(WP) :: tauinf,G,Gdtau,Gdtaui,dx
-   real(WP) :: L_buffer
+   real(WP) :: tauinf,G,Gdtau,Gdtaui
+   real(WP) :: L_buffer,L_faded
 
    !> For monitoring
    real(WP) :: EPS
@@ -170,33 +170,28 @@ contains
 
 
    !> Initialize a double delta field
-   subroutine ignition_doubledelta(Lbu)
+   subroutine ignition_doubledelta(Lbu,Lfd)
       use precision
       use param,    only: param_read
-      use random,   only: random_normal, random_uniform
-      use messager, only: die
+      use random,   only: random_normal,random_uniform
       use, intrinsic :: iso_c_binding
       implicit none
-      ! Buffer region lenght
-      real(WP), intent(in) :: Lbu
+
+      ! Buffer and faded region lenght
+      real(WP), intent(in) :: Lbu,Lfd
       real(WP) :: pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi,kk2
-      ! Complex buffer
+      ! Complex and real buffer
       complex(WP), dimension(:,:,:), pointer :: Cbuf
-      ! Real buffer
-      real(WP),    dimension(:,:,:), pointer :: Rbuf
-      ! Scalar buffer
-      real(WP)  :: tmp_mean,tmp_rms
+      real(WP), dimension(:,:,:), pointer :: Rbuf
       ! Spectrum computation
-      real(WP) :: alpha,spec_amp,eps,amp_disc,e_total,energy_spec
-      ! real(WP), dimension(:,:), pointer :: spect
+      real(WP) :: spec_amp,eps,amp_disc,energy_spec
       complex(WP), dimension(:,:,:), pointer :: ak,bk
       ! Other
-      integer     :: i,j,k,ik,iunit,dim,nk,imin,imax,jmin,jmax,kmin,kmax,nx,ny,nz
+      integer     :: i,j,k,nk,imin,imax,jmin,jmax,kmin,kmax,nx,ny,nz
       complex(WP) :: ii=(0.0_WP,1.0_WP)
       real(WP)    :: rand
       ! Fourier coefficients
       integer(KIND=8) :: plan_r2c,plan_c2r
-      complex(WP), dimension(:,:,:), pointer :: Uk,Vk!,Wk
 
       include 'fftw3.f03'
 
@@ -206,53 +201,8 @@ contains
       ! Step size for wave number
       dk=2.0_WP*pi/(Lx-2.0_WP*Lbu)
 
-      ! Find the x bounds of the region to be initialized
-      imin=sc%cfg%imin
-      do i=sc%cfg%imin,sc%cfg%imax
-         if (sc%cfg%xm(i).gt.sc%cfg%x(sc%cfg%imin)+Lbu) then
-            imin=i
-            exit
-         end if
-      end do
-      imax=sc%cfg%imax
-      do i=sc%cfg%imax,sc%cfg%imin,-1
-         if (sc%cfg%xm(i).lt.sc%cfg%x(sc%cfg%imax+1)-Lbu) then
-            imax=i
-            exit
-         end if
-      end do
-
-      ! Find the y bounds of the region to be initialized
-      jmin=sc%cfg%jmin
-      do j=sc%cfg%jmin,sc%cfg%jmax
-         if (sc%cfg%ym(j).gt.sc%cfg%y(sc%cfg%jmin)+Lbu) then
-            jmin=j
-            exit
-         end if
-      end do
-      jmax=sc%cfg%jmax
-      do j=sc%cfg%jmax,sc%cfg%jmin,-1
-         if (sc%cfg%ym(j).lt.sc%cfg%y(sc%cfg%jmax+1)-Lbu) then
-            jmax=j
-            exit
-         end if
-      end do
-
-      ! Find the z bounds of the region to be initialized
-      kmin=sc%cfg%kmin
-      do k=sc%cfg%kmin,sc%cfg%kmax
-         if (sc%cfg%zm(k).gt.sc%cfg%z(sc%cfg%kmin)+Lbu) then
-            kmin=k
-            exit
-         end if
-      end do
-      kmax=sc%cfg%kmax
-      do k=sc%cfg%kmax,sc%cfg%kmin,-1
-         if (sc%cfg%zm(k).lt.sc%cfg%z(sc%cfg%kmax+1)-Lbu) then
-            kmax=k
-            exit
-         end if
-      end do
+      ! Find bounds of the region to be initialized
+      call get_borders(Lbu,imin,imax,jmin,jmax,kmin,kmax)
 
       ! Number of cells iniside the initialization region
       nx=imax-imin+1
@@ -358,8 +308,8 @@ contains
       ! Set zero in the buffer region
       tmp_sc=0.0_WP
       ! Set the internal scalar field
-      ! tmp_sc(imin:imax,jmin:jmax,kmin:kmax)=Rbuf/real(nx*ny*nz,WP)
-      tmp_sc(imin:imax,jmin:jmax,kmin:kmax)=1.0_WP
+      tmp_sc(imin:imax,jmin:jmax,kmin:kmax)=Rbuf/real(nx*ny*nz,WP)
+      ! tmp_sc(imin:imax,jmin:jmax,kmin:kmax)=1.0_WP
 
       ! Destroy the plans
       call dfftw_destroy_plan(plan_c2r)
@@ -368,45 +318,41 @@ contains
       ! Clean up
       deallocate(Cbuf)
       deallocate(Rbuf)
+
+      ! Fade to zero in the buffer region
+      call fade_borders(tmp_sc,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
    end subroutine ignition_doubledelta
 
 
    !> Initialize PP spectrum for velocity
-   subroutine ignition_spectrum(Lbu,Ut,le,ld,epsilon)
+   subroutine ignition_spectrum(Lbu,Lfd,Ut,le,ld,epsilon)
       use precision
       use param,    only: param_read
       use random,   only: random_normal, random_uniform
-      use messager, only: die
       use, intrinsic :: iso_c_binding
       implicit none
 
-      ! Buffer region lenght
-      real(WP), intent(in) :: Lbu
-
+      ! Buffer and faded region lenght
+      real(WP), intent(in) :: Lbu,Lfd
       ! Turbulent velocity
       real(WP) :: Ut
-
       ! Spectrum type
       real(WP) :: le,ld,epsilon
-
       ! Spectrum computation
-      real(WP) :: psr,ps1,ps2,ke,kd,dk,kc,kk,kx,ky,kz,kk2
-      real(WP) :: alpha,spec_amp,eps,amp_disc,e_total,energy_spec
+      real(WP) :: psr,ps1,ps2,ke,dk,kc,kk,kx,ky,kz,kk2
+      real(WP) :: spec_amp,eps,amp_disc,energy_spec
       complex(WP), dimension(:,:,:), pointer :: ak,bk
-      integer  :: nk ! Cutoff wave number
-
+      ! Cutoff wave number
+      integer  :: nk
       ! Complex buffer
       complex(WP), dimension(:,:,:), pointer :: Cbuf
-
       ! Real buffer
-      real(WP),    dimension(:,:,:), pointer :: Rbuf
-
+      real(WP), dimension(:,:,:), pointer :: Rbuf
       ! Other
-      integer :: i,j,k,ik,iunit,dim
+      integer :: i,j,k
       integer :: imin,imax,jmin,jmax,kmin,kmax,nx,ny,nz
       complex(WP) :: ii=(0.0_WP,1.0_WP)
       real(WP) :: rand,pi
-
       ! Fourier coefficients
       integer(KIND=8) :: plan_r2c,plan_c2r
       complex(WP), dimension(:,:,:), pointer :: Uk,Vk!,Wk
@@ -416,53 +362,8 @@ contains
       ! Create pi
       pi=acos(-1.0_WP)
 
-      ! Find the x bounds of the region to be initialized
-      imin=fs%cfg%imin
-      do i=fs%cfg%imin,fs%cfg%imax
-         if (fs%cfg%xm(i).gt.fs%cfg%x(fs%cfg%imin)+Lbu) then
-            imin=i
-            exit
-         end if
-      end do
-      imax=fs%cfg%imax
-      do i=fs%cfg%imax,fs%cfg%imin,-1
-         if (fs%cfg%xm(i).lt.fs%cfg%x(fs%cfg%imax+1)-Lbu) then
-            imax=i
-            exit
-         end if
-      end do
-
-      ! Find the y bounds of the region to be initialized
-      jmin=fs%cfg%jmin
-      do j=fs%cfg%jmin,fs%cfg%jmax
-         if (fs%cfg%ym(j).gt.fs%cfg%y(fs%cfg%jmin)+Lbu) then
-            jmin=j
-            exit
-         end if
-      end do
-      jmax=fs%cfg%jmax
-      do j=fs%cfg%jmax,fs%cfg%jmin,-1
-         if (fs%cfg%ym(j).lt.fs%cfg%y(fs%cfg%jmax+1)-Lbu) then
-            jmax=j
-            exit
-         end if
-      end do
-
-      ! Find the z bounds of the region to be initialized
-      kmin=fs%cfg%kmin
-      do k=fs%cfg%kmin,fs%cfg%kmax
-         if (fs%cfg%zm(k).gt.fs%cfg%z(fs%cfg%kmin)+Lbu) then
-            kmin=k
-            exit
-         end if
-      end do
-      kmax=fs%cfg%kmax
-      do k=fs%cfg%kmax,fs%cfg%kmin,-1
-         if (fs%cfg%zm(k).lt.fs%cfg%z(fs%cfg%kmax+1)-Lbu) then
-            kmax=k
-            exit
-         end if
-      end do
+      ! Find bounds of the region to be initialized
+      call get_borders(Lbu,imin,imax,jmin,jmax,kmin,kmax)
 
       ! Number of cells iniside the initialization region
       nx=imax-imin+1
@@ -578,7 +479,176 @@ contains
       ! deallocate(Wk)
       deallocate(ak)
       deallocate(bk)
+
+      ! Fade to zero in the buffer region
+      call fade_borders(tmp_U,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
+      call fade_borders(tmp_V,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
    end subroutine ignition_spectrum
+
+
+   !> Find the border indices of the initialization region
+   subroutine get_borders(Lbu,imin,imax,jmin,jmax,kmin,kmax)
+      implicit none
+      real(WP), intent(in) :: Lbu
+      integer, intent(out) :: imin,imax,jmin,jmax,kmin,kmax
+      integer :: i,j,k
+
+      ! Find the x bounds
+      imin=cfg%imin
+      do i=cfg%imin,cfg%imax
+         if (cfg%xm(i).gt.cfg%x(cfg%imin)+Lbu) then
+            imin=i
+            exit
+         end if
+      end do
+      imax=cfg%imax
+      do i=cfg%imax,cfg%imin,-1
+         if (cfg%xm(i).lt.cfg%x(cfg%imax+1)-Lbu) then
+            imax=i
+            exit
+         end if
+      end do
+
+      ! Find the y bounds
+      jmin=cfg%jmin
+      do j=cfg%jmin,cfg%jmax
+         if (cfg%ym(j).gt.cfg%y(cfg%jmin)+Lbu) then
+            jmin=j
+            exit
+         end if
+      end do
+      jmax=cfg%jmax
+      do j=cfg%jmax,cfg%jmin,-1
+         if (cfg%ym(j).lt.cfg%y(cfg%jmax+1)-Lbu) then
+            jmax=j
+            exit
+         end if
+      end do
+
+      ! Find the z bounds
+      kmin=cfg%kmin
+      do k=cfg%kmin,cfg%kmax
+         if (cfg%zm(k).gt.cfg%z(cfg%kmin)+Lbu) then
+            kmin=k
+            exit
+         end if
+      end do
+      kmax=cfg%kmax
+      do k=cfg%kmax,cfg%kmin,-1
+         if (cfg%zm(k).lt.cfg%z(cfg%kmax+1)-Lbu) then
+            kmax=k
+            exit
+         end if
+      end do
+   end subroutine get_borders
+
+
+   !> Fade borders of the initialized region for smooth transition to ambient
+   subroutine fade_borders(field,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
+      implicit none
+      real(WP), intent(inout) :: field(cfg%imin:cfg%imax,cfg%jmin:cfg%jmax,cfg%kmin:cfg%kmax)
+      real(WP), intent(in)    :: Lbu,Lfd
+      integer, intent(in)     :: imin,imax,jmin,jmax,kmin,kmax
+      integer  :: i,j,k
+      real(WP) :: dx,dy
+
+      ! Check the lengths
+      if ((Lbu.gt.0.0_WP).and.(Lfd.gt.0.0_WP)) then
+
+         ! Left side
+         do i=cfg%imin,imin-1
+            dx=abs(cfg%xm(i)-cfg%xm(imin))
+            if (dx.le.Lfd) then
+               do j=jmin,jmax
+                  field(i,j,kmin:kmax)=field(imin,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)
+               end do
+            end if
+         end do
+
+         ! Right side
+         do i=imax+1,cfg%imax
+            dx=abs(cfg%xm(i)-cfg%xm(imax))
+            if (dx.le.Lfd) then
+               do j=jmin,jmax
+                  field(i,j,kmin:kmax)=field(imax,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)
+               end do
+            end if
+         end do
+
+         ! Bottom side
+         do j=cfg%jmin,jmin-1
+            dy=abs(cfg%ym(j)-cfg%ym(jmin))
+            if (dy.le.Lfd) then
+               do i=imin,imax
+                  field(i,j,kmin:kmax)=field(i,jmin,kmin:kmax)*exp(-(dy/(dy-Lfd))**2)
+               end do
+            end if
+         end do
+
+         ! Top side
+         do j=jmax+1,cfg%jmax
+            dy=abs(cfg%ym(j)-cfg%ym(jmax))
+            if (dy.le.Lfd) then
+               do i=imin,imax
+                  field(i,j,kmin:kmax)=field(i,jmax,kmin:kmax)*exp(-(dy/(dy-Lfd))**2)
+               end do
+            end if
+         end do
+
+         ! Left bottom corner
+         do j=cfg%jmin,jmin-1
+            dy=abs(cfg%ym(j)-cfg%ym(jmin))
+            if (dy.le.Lfd) then
+               do i=cfg%imin,imin-1
+                  dx=abs(cfg%xm(i)-cfg%xm(imin))
+                  if (dx.le.Lfd) then
+                     field(i,j,kmin:kmax)=(dy*field(imin,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)+dx*field(i,jmin,kmin:kmax)*exp(-(dy/(dy-Lfd))**2))/(dx+dy)
+                  end if
+               end do
+            end if
+         end do
+
+         ! Left top corner
+         do j=jmax+1,cfg%jmax
+            dy=abs(cfg%ym(j)-cfg%ym(jmax))
+            if (dy.le.Lfd) then
+               do i=cfg%imin,imin-1
+                  dx=abs(cfg%xm(i)-cfg%xm(imin))
+                  if (dx.le.Lfd) then
+                     field(i,j,kmin:kmax)=(dy*field(imin,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)+dx*field(i,jmax,kmin:kmax)*exp(-(dy/(dy-Lfd))**2))/(dx+dy)
+                  end if
+               end do
+            end if
+         end do
+
+         ! Right top corner
+         do j=jmax+1,cfg%jmax
+            dy=abs(cfg%ym(j)-cfg%ym(jmax))
+            if (dy.le.Lfd) then
+               do i=imax+1,cfg%imax
+                  dx=abs(cfg%xm(i)-cfg%xm(imax))
+                  if (dx.le.Lfd) then
+                     field(i,j,kmin:kmax)=(dy*field(imax,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)+dx*field(i,jmax,kmin:kmax)*exp(-(dy/(dy-Lfd))**2))/(dx+dy)
+                  end if
+               end do
+            end if
+         end do
+
+         ! Right bottom corner
+         do j=cfg%jmin,jmin-1
+            dy=abs(cfg%ym(j)-cfg%ym(jmin))
+            if (dy.le.Lfd) then
+               do i=imax+1,cfg%imax
+                  dx=abs(cfg%xm(i)-cfg%xm(imax))
+                  if (dx.le.Lfd) then
+                     field(i,j,kmin:kmax)=(dy*field(imax,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)+dx*field(i,jmin,kmin:kmax)*exp(-(dy/(dy-Lfd))**2))/(dx+dy)
+                  end if
+               end do
+            end if
+         end do
+
+      end if
+   end subroutine fade_borders
 
 
    !> Initialization of problem solver
@@ -592,10 +662,15 @@ contains
       call param_read('Time stepping',time_stepping)
       if ((time_stepping.ne.'explicit').and.(time_stepping.ne.'implicit')) call die('Incorrect time stepping option.')
 
+
+      ! Read in the buffer region length
+      call param_read('Buffer region length',L_buffer)
+      ! Read in the faded region length
+      call param_read('Faded region length',L_faded)
+
       ! Read in the EOS info
       call param_read('rho0',rho0)
       call param_read('rho1',rho1)
-
 
       ! Read in inlet information
       call param_read('Spot radius',radius)
@@ -715,10 +790,8 @@ contains
          use parallel,       only: MPI_REAL_WP
          integer :: n,i,j,k,ierr
          type(bcond), pointer :: mybc
-         ! Read in the buffer region length
-         call param_read('Buffer region length',L_buffer)
          ! Initialize the global scalar field
-         if (sc%cfg%amRoot) call ignition_doubledelta(L_buffer)
+         if (sc%cfg%amRoot) call ignition_doubledelta(L_buffer,L_faded)
          ! Communicate information
          call MPI_BCAST(tmp_sc,sc%cfg%nx*sc%cfg%ny*sc%cfg%nz,MPI_REAL_WP,0,sc%cfg%comm,ierr)
          ! Set the local scalar field
@@ -739,23 +812,23 @@ contains
          integer :: n,i,j,k,ierr
          type(bcond), pointer :: mybc
          ! Velocity fluctuation, length scales, epsilon
-         real(WP) :: Ut,le,ld, epsilon
+         real(WP) :: Ut,le,ld,epsilon
          ! Read in the inputs
          call param_read('Velocity fluctuation',Ut)
          call param_read('Energetic scale',le)
          call param_read('Dissipative scale',ld)
          call param_read('Dissipation',epsilon)
-         ! ! Initialize the global velocity field
-         ! if (fs%cfg%amRoot) call ignition_spectrum(L_buffer,1.0_WP,le,ld,epsilon)
-         ! ! Communicate information
-         ! call MPI_BCAST(tmp_U,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
-         ! call MPI_BCAST(tmp_V,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
-         ! ! Set the local velocity field
-         ! fs%U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
-         ! fs%V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
-         fs%U=0.0_WP
-         fs%V=0.0_WP
-         fs%W=0.0_WP
+         ! Initialize the global velocity field
+         if (fs%cfg%amRoot) call ignition_spectrum(L_buffer,L_faded,1.0_WP,le,ld,epsilon)
+         ! Communicate information
+         call MPI_BCAST(tmp_U,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
+         call MPI_BCAST(tmp_V,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
+         ! Set the local velocity field
+         fs%U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
+         fs%V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=tmp_V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
+         ! fs%U=0.0_WP
+         ! fs%V=0.0_WP
+         ! fs%W=0.0_WP
          ! Sync it
          call fs%cfg%sync(fs%U)
          call fs%cfg%sync(fs%V)
@@ -979,7 +1052,7 @@ contains
             fs%rhoV=fs%rhoV-time%dtmid*resV
             fs%rhoW=fs%rhoW-time%dtmid*resW
             call fs%rho_divide()
-            
+
             ! ===================================================
 
             ! Increment sub-iteration counter

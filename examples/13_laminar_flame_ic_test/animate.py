@@ -15,7 +15,7 @@ gas = ct.Solution('cti/YAO_reduced.cti')
 
 gas.set_equivalence_ratio(1.0, "NXC12H26", "O2:1.0,N2:3.76")
 gas.TP = 300.0, 3.4e6
-width = 3e-4  # m
+width = 1e-3  # m
 loglevel = 1  # amount of diagnostic output (0 to 8)
 
 restore = True
