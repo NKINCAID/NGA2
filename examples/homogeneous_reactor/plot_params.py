@@ -1,9 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-plt.rcParams.update({"font.size": 22})
+plt.rcParams.update({"font.size": 12})
 plt.rcParams["mathtext.fontset"] = "stix"
-plt.rcParams["font.family"] = "Times New Roman"
+plt.rcParams["font.family"] = "Arial Rounded MT Bold"
 plt.rcParams["legend.handlelength"] = 0.8
 
 
@@ -18,7 +18,6 @@ c = [
     "#4daf4a",
     "#984ea3",
     "#ff7f00",
-    # "#ffff33",
     "#a65628",
     "#f781bf",
 ]

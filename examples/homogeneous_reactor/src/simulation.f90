@@ -30,7 +30,7 @@ module simulation
    real(WP), dimension(:), allocatable :: hY      !< Enthalpy and mass fractions of sub species
    real(WP), dimension(:), allocatable :: TYS     !< Temperature, mass fractions, and source terms of sub species
    real(WP) :: T,h                                !< Temperature and enthalpy
-   character(len=str_medium), dimension(:), allocatable :: spec_name  
+   character(len=str_medium), dimension(:), allocatable :: spec_name
 
    ! Indices of species
    integer :: isc_dodecane,isc_isocetane,isc_o2,isc_n2
@@ -49,7 +49,7 @@ contains
 
 
       ! Initialize neural networks
-      create_networks: block
+      create_ann: block
          use string, only: str_medium
          character(len=str_medium) :: aenfname,csnfname
          ! Read in the data file names
@@ -64,7 +64,7 @@ contains
          ! Array sizes
          nZ=size(aen%matrices(aen%imat_proj_weight)%matrix,dim=1)
          nY_sub=size(aen%vectors(aen%ivec_spec_inds)%vector)
-      end block create_networks
+      end block create_ann
 
 
       ! Initialize time tracker
@@ -123,10 +123,10 @@ contains
       create_monitor: block
          mfile=monitor(cfg%amRoot,'simulation')
          call mfile%add_column(time%t,'Time')
-         call mfile%add_column(Y(isc_dodecane),'Dodecane mass fraction')
-         call mfile%add_column(Y(isc_isocetane),'Iso-cetane mass fraction')
-         call mfile%add_column(Y(isc_o2),'O2 mass fraction')
-         call mfile%add_column(Y(isc_n2),'N2 mass fraction')
+         call mfile%add_column(Y(isc_dodecane),'Y_XC12H26')
+         call mfile%add_column(Y(isc_isocetane),'Y_HMN')
+         call mfile%add_column(Y(isc_o2),'Y_O2')
+         call mfile%add_column(Y(isc_n2),'Y_N2')
          call mfile%add_column(T,'Temperature')
          call mfile%write()
       end block create_monitor
@@ -138,7 +138,6 @@ contains
    !> Perform an NGA2 simulation
    subroutine simulation_run
       implicit none
-      integer :: ispec
 
 
       ! Perform time integration
@@ -165,12 +164,15 @@ contains
          end do
 
          ! Map the neural network scalars to Y and T
-         call aen%decode(Z,TYS)
-         call aen%inverse_transform_outputs(TYS(1:nY_sub+1),hY)
-         T=hY(1)
-         do ispec=1,nY_sub
-            Y(int(aen%vectors(aen%ivec_spec_inds)%vector(ispec)))=hY(ispec+1)
-         end do
+         postprocess_ann: block
+            integer :: ispec
+            call aen%decode(Z,TYS)
+            call aen%inverse_transform_outputs(TYS(1:nY_sub+1),hY)
+            T=hY(1)
+            do ispec=1,nY_sub
+               Y(int(aen%vectors(aen%ivec_spec_inds)%vector(ispec)))=hY(ispec+1)
+            end do
+         end block postprocess_ann
 
          ! Output
          call mfile%write()
@@ -196,7 +198,7 @@ contains
       ! Deallocate work arrays
       deallocate(Z,Zold,Z_src,Y,hY,TYS)
 
-      
+
    end subroutine simulation_final
 
 

@@ -25,6 +25,9 @@ data = np.array(data)
 
 time_array = data[:,names.index('Time')]
 T_array = data[:,names.index('Temperature')]
+Y_O2_array = data[:,names.index('Y_O2')]
+Y_N2_array = data[:,names.index('Y_N2')]
+Y_HMN_array = data[:,names.index('Y_HMN')]
 
 gas = ct.Solution('cti/reducedS152R621_0.cti')
 
@@ -56,37 +59,113 @@ for i in range(1,10000):
 
     states.append(r.thermo.state, t=time)
 
-fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-ax.plot(
+fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+
+ax[0].plot(
     states.t * 1000,
     states.T,
     lw=lw,
     label="Cantera",
-    color=c[0],
+    color='blue',
 )
 
-ax.plot(
-    time_array  * 1000,
+ax[0].plot(
+    time_array * 1000,
     T_array,
     lw=lw,
     ls="--",
     label="NGA2",
-    color=c[1],
+    color='red'
 )
 
-ax.set(
+ax[0].set(
     xlabel="Time [ms]",
     ylabel="Temperature [K]",
-    ylim=[650, 3100],
+    xlim=[0, 10],
+    ylim=[750, 2600]
 )
-ax.grid()
 
-ax.legend(frameon=False, loc="lower right")
+ax[0].grid()
 
-plt.title(r"Constant Volume Reactor")
+ax[0].legend(frameon=False, loc="upper left")
+
+ax[1].plot(
+    states.t * 1000,
+    states.Y[:, gas.species_index('O2')],
+    lw=lw,
+    label="Cantera",
+    color='blue',
+)
+
+ax[1].plot(
+    time_array * 1000,
+    Y_O2_array,
+    lw=lw,
+    ls="--",
+    label="NGA2",
+    color='red'
+)
+
+ax[1].set(
+    xlabel="Time [ms]",
+    ylabel="O2 mass fraction [1]",
+    xlim=[0, 10]
+)
+
+ax[1].grid()
+
+# ax[1, 0].plot(
+#     states.t * 1000,
+#     states.Y[:, gas.species_index('N2')],
+#     lw=lw,
+#     label="Cantera",
+#     color='blue',
+# )
+
+# ax[1, 0].plot(
+#     time_array * 1000,
+#     Y_N2_array,
+#     lw=lw,
+#     ls="--",
+#     label="NGA2",
+#     color='red'
+# )
+
+# ax[1, 0].set(
+#     xlabel="Time [ms]",
+#     ylabel="N2 mass fraction [1]",
+#     xlim=[0, 10]
+# )
+
+# ax[1, 0].ticklabel_format(axis='y', style='sci', scilimits=(0,0))
+
+# ax[1, 1].plot(
+#     states.t * 1000,
+#     states.Y[:, gas.species_index('HMN')],
+#     lw=lw,
+#     label="Cantera",
+#     color='blue',
+# )
+
+# ax[1, 1].plot(
+#     time_array * 1000,
+#     Y_HMN_array,
+#     lw=lw,
+#     ls="--",
+#     label="NGA2",
+#     color='red'
+# )
+
+# ax[1, 1].set(
+#     xlabel="Time [ms]",
+#     ylabel="HMN mass fraction [1]",
+#     xlim=[0, 10]
+# )
+
+# ax[1, 1].ticklabel_format(axis='y', style='sci', scilimits=(0,0))
+
+# ax[1, 1].grid()
 
 plt.tight_layout()
-# plt.savefig("temperature.png")
 
 plt.show()
-# plt.savefig("f.png")
