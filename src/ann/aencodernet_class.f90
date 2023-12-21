@@ -13,6 +13,9 @@ module aencodernet_class
    !> Auto encoder network object definition
    type, extends(multimatrix) :: aencodernet
 
+      ! Number of ANN variables
+      integer :: nvar
+
       ! Indices of vectors
       integer :: ivec_spec_inds                                                      !< Indices of species used to construct reduced space
       integer :: ivec_hid1_bias,ivec_hid2_bias,ivec_outp_bias                        !< Bias
@@ -29,8 +32,8 @@ module aencodernet_class
 
    contains
 
-      procedure :: encode                                                            !< Encode
-      procedure :: decode                                                            !< Decode
+      procedure :: encode                                                            !< Encode from actual to ANN variables
+      procedure :: decode                                                            !< Decode from ANN to actual variables
       procedure :: transform_inputs                                                  !< Transform inputs
       procedure :: inverse_transform_outputs                                         !< Inverse transform outputs
 
@@ -115,6 +118,9 @@ contains
           call die('[aencodernet constructor] Inconsistent number of matrices')
       end if
 
+      ! Get the number of state variables
+      self%nvar=size(self%matrices(self%imat_proj_weight)%matrix,dim=1)
+
       ! Allocate transposed matrices
       allocate(self%proj_weight_T(size(self%matrices(self%imat_proj_weight)%matrix,dim=2),size(self%matrices(self%imat_proj_weight)%matrix,dim=1)))
       allocate(self%hid1_weight_T(size(self%matrices(self%imat_hid1_weight)%matrix,dim=2),size(self%matrices(self%imat_hid1_weight)%matrix,dim=1)))
@@ -128,51 +134,53 @@ contains
       self%outp_weight_T=transpose(self%matrices(self%imat_outp_weight)%matrix)
    end function constructor
 
-   !> Encode
-   subroutine encode(this,input,output)
-      implicit none
-      class(aencodernet), intent(in)        :: this
-      real(WP), dimension(:), intent(in)    :: input
-      real(WP), dimension(:), intent(inout) :: output
 
-      output=matmul(input,this%proj_weight_T)
+   !> Map the actual variables to the ANN representation of variables
+   subroutine encode(this,actvar,annvar)
+      implicit none
+      class(aencodernet), intent(inout)   :: this
+      real(WP), dimension(:), intent(in)  :: actvar
+      real(WP), dimension(:), intent(out) :: annvar
+
+      annvar=matmul(actvar,this%proj_weight_T)
    end subroutine encode
 
 
-   !> Decode
-   subroutine decode(this,input,output)
+   !> Map the ANN variables to the actual variables
+   subroutine decode(this,annvar,actvar)
       implicit none
-      class(aencodernet), intent(inout)     :: this
-      real(WP), dimension(:), intent(in)    :: input
-      real(WP), dimension(:), intent(inout) :: output
-      real(WP), dimension(:), allocatable   :: tmp_arr
+      class(aencodernet), intent(inout)   :: this
+      real(WP), dimension(:), intent(in)  :: annvar
+      real(WP), dimension(:), intent(out) :: actvar
+      real(WP), dimension(:), allocatable :: tmparr
 
-      allocate(tmp_arr(size(this%hid2_weight_T,dim=1)))
-      tmp_arr=ReLU(matmul(input ,this%hid1_weight_T)+this%vectors(this%ivec_hid1_bias)%vector)
-      tmp_arr=ReLU(matmul(tmp_arr,this%hid2_weight_T)+this%vectors(this%ivec_hid2_bias)%vector)
-      output=matmul(tmp_arr,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
+      allocate(tmparr(size(this%hid2_weight_T,dim=1)))
+      tmparr=ReLU(matmul(annvar,this%hid1_weight_T)+this%vectors(this%ivec_hid1_bias)%vector)
+      tmparr=ReLU(matmul(tmparr,this%hid2_weight_T)+this%vectors(this%ivec_hid2_bias)%vector)
+      actvar=     matmul(tmparr,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
+      deallocate(tmparr)
    end subroutine decode
 
 
-   !> Transform inputs
-   subroutine transform_inputs(this,input,output)
+   !> Transform inputs to match the ANN variables
+   subroutine transform_inputs(this,xraw,xtrf)
       implicit none
-      class(aencodernet), intent(inout)     :: this
-      real(WP), dimension(:), intent(in)    :: input
-      real(WP), dimension(:), intent(inout) :: output
+      class(aencodernet), intent(inout)   :: this
+      real(WP), dimension(:), intent(in)  :: xraw
+      real(WP), dimension(:), intent(out) :: xtrf
 
-      output=(input-this%vectors(this%ivec_x_shift)%vector)/this%vectors(this%ivec_x_scale)%vector
+      xtrf=(xraw-this%vectors(this%ivec_x_shift)%vector)/this%vectors(this%ivec_x_scale)%vector
    end subroutine transform_inputs
 
 
-   !> Inverse transform outputs
-   subroutine inverse_transform_outputs(this,input,output)
+   !> Inverse transform outputs to match the actual variables
+   subroutine inverse_transform_outputs(this,yraw,ytrf)
       implicit none
-      class(aencodernet), intent(inout)     :: this
-      real(WP), dimension(:), intent(in)    :: input
-      real(WP), dimension(:), intent(inout) :: output
+      class(aencodernet), intent(inout)   :: this
+      real(WP), dimension(:), intent(in)  :: yraw
+      real(WP), dimension(:), intent(out) :: ytrf
       
-      output=input*this%vectors(this%ivec_y_scale)%vector+this%vectors(this%ivec_y_shift)%vector
+      ytrf=yraw*this%vectors(this%ivec_y_scale)%vector+this%vectors(this%ivec_y_shift)%vector
    end subroutine inverse_transform_outputs
 
 

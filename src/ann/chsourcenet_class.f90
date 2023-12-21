@@ -123,18 +123,20 @@ contains
    end function constructor
 
 
-   subroutine get_src(this,input,output)
+   !> Get the source terms of ODEs for ANN variables
+   subroutine get_src(this,annvar,annsrc)
       implicit none
-      class(chsourcenet), intent(inout)     :: this
-      real(WP), dimension(:), intent(in)    :: input
-      real(WP), dimension(:), intent(inout) :: output
-      real(WP), dimension(:), allocatable   :: tmp_arr
+      class(chsourcenet), intent(inout)   :: this
+      real(WP), dimension(:), intent(in)  :: annvar
+      real(WP), dimension(:), intent(out) :: annsrc
+      real(WP), dimension(:), allocatable :: tmparr
 
-      allocate(tmp_arr(size(this%lay1_weight_T,dim=1)))
-      tmp_arr=ReLU(matmul(input ,this%lay0_weight_T)+this%vectors(this%ivec_lay0_bias)%vector)
-      tmp_arr=ReLU(matmul(tmp_arr,this%lay1_weight_T)+this%vectors(this%ivec_lay1_bias)%vector)
-      tmp_arr=ReLU(matmul(tmp_arr,this%lay2_weight_T)+this%vectors(this%ivec_lay2_bias)%vector)
-      output=matmul(tmp_arr,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
+      allocate(tmparr(size(this%lay1_weight_T,dim=1)))
+      tmparr=ReLU(matmul(annvar,this%lay0_weight_T)+this%vectors(this%ivec_lay0_bias)%vector)
+      tmparr=ReLU(matmul(tmparr,this%lay1_weight_T)+this%vectors(this%ivec_lay1_bias)%vector)
+      tmparr=ReLU(matmul(tmparr,this%lay2_weight_T)+this%vectors(this%ivec_lay2_bias)%vector)
+      annsrc=     matmul(tmparr,this%outp_weight_T)+this%vectors(this%ivec_outp_bias)%vector
+      deallocate(tmparr)
    end subroutine get_src
 
 

@@ -39,7 +39,7 @@ module simulation
    !> Equation of state
    real(WP) :: rho0,rho1
    real(WP) :: Z_spot,Z_air
-   real(WP) :: radius, shift
+   real(WP) :: radius,shift
 
    !> Integral of pressure residual
    real(WP) :: int_RP=0.0_WP

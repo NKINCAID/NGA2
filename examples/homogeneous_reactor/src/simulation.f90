@@ -21,7 +21,6 @@ module simulation
    type(monitor) :: mfile
 
    !> Scalars in the neural network representation of the mechanism
-   integer :: nZ,nY_sub
    real(WP), dimension(:), allocatable :: Z,Zold
    real(WP), dimension(:), allocatable :: Z_src   !< RHS of the scalar ODEs
 
@@ -31,11 +30,12 @@ module simulation
    real(WP), dimension(:), allocatable :: TYS     !< Temperature, mass fractions, and source terms of sub species
    real(WP) :: T,h                                !< Temperature and enthalpy
    character(len=str_medium), dimension(:), allocatable :: spec_name
+   integer :: nY_sub
 
    ! Indices of species
-   integer :: isc_dodecane,isc_isocetane,isc_o2,isc_n2
+   integer :: ispec_dodecane,ispec_isocetane,ispec_o2,ispec_n2
 
-
+   !> Simulation sub-routines
    public :: simulation_init,simulation_run,simulation_final
 
 
@@ -48,7 +48,7 @@ contains
       implicit none
 
 
-      ! Initialize neural networks
+      ! Create neural networks
       create_ann: block
          use string, only: str_medium
          character(len=str_medium) :: aenfname,csnfname
@@ -61,8 +61,7 @@ contains
          ! The chemical source network object
          csn=chsourcenet(cfg=cfg,fdata=csnfname,name='Chemical source network')
          call csn%print()
-         ! Array sizes
-         nZ=size(aen%matrices(aen%imat_proj_weight)%matrix,dim=1)
+         ! Species sub-array size
          nY_sub=size(aen%vectors(aen%ivec_spec_inds)%vector)
       end block create_ann
 
@@ -79,9 +78,9 @@ contains
 
       ! Allocate work arrays
       allocate_work_arrays: block
-         allocate(Z(nZ))          ; Z    =0.0_WP
-         allocate(Zold(nZ))       ; Zold =0.0_WP
-         allocate(Z_src(nZ))      ; Z_src=0.0_WP
+         allocate(Z(aen%nvar))    ; Z    =0.0_WP
+         allocate(Zold(aen%nvar)) ; Zold =0.0_WP
+         allocate(Z_src(aen%nvar)); Z_src=0.0_WP
          allocate(Y(nspec))       ; Y    =0.0_WP
          allocate(hY(nY_sub+1))   ; hY   =0.0_WP
          allocate(TYS(2*nY_sub+1)); TYS  =0.0_WP
@@ -97,23 +96,23 @@ contains
          ! Get the indices
          do ispec=1,nspec
             if (spec_name(ispec).eq.'XC12H26') then
-               isc_dodecane=ispec
+               ispec_dodecane=ispec
             elseif (spec_name(ispec).eq.'HMN') then
-               isc_isocetane=ispec
+               ispec_isocetane=ispec
             elseif (spec_name(ispec).eq.'O2') then
-               isc_o2=ispec
+               ispec_o2=ispec
             elseif (spec_name(ispec).eq.'N2') then
-               isc_n2=ispec
+               ispec_n2=ispec
             end if
          end do
-         ! Initial values
+         ! Initial conditions
          call param_read('Initial temperature',T)
          call param_read('Initial enthalpy',h)
-         call param_read('Initial HMN',Y(isc_isocetane))
-         call param_read('Initial XC12H26',Y(isc_dodecane))
-         call param_read('Initial N2',Y(isc_n2))
-         call param_read('Initial O2',Y(isc_o2))
-         ! Map Y and T to the neural network scalars
+         call param_read('Initial HMN',Y(ispec_isocetane))
+         call param_read('Initial XC12H26',Y(ispec_dodecane))
+         call param_read('Initial N2',Y(ispec_n2))
+         call param_read('Initial O2',Y(ispec_o2))
+         ! Map Y and h to the neural network scalars
          call aen%transform_inputs([h,Y(int(aen%vectors(aen%ivec_spec_inds)%vector))],hY)
          call aen%encode(hY,Z)
       end block initialize_scalar
@@ -123,10 +122,10 @@ contains
       create_monitor: block
          mfile=monitor(cfg%amRoot,'simulation')
          call mfile%add_column(time%t,'Time')
-         call mfile%add_column(Y(isc_dodecane),'Y_XC12H26')
-         call mfile%add_column(Y(isc_isocetane),'Y_HMN')
-         call mfile%add_column(Y(isc_o2),'Y_O2')
-         call mfile%add_column(Y(isc_n2),'Y_N2')
+         call mfile%add_column(Y(ispec_dodecane),'Y_XC12H26')
+         call mfile%add_column(Y(ispec_isocetane),'Y_HMN')
+         call mfile%add_column(Y(ispec_o2),'Y_O2')
+         call mfile%add_column(Y(ispec_n2),'Y_N2')
          call mfile%add_column(T,'Temperature')
          call mfile%write()
       end block create_monitor
