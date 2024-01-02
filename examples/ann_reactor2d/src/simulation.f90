@@ -1,11 +1,11 @@
 !> Various definitions and tools for running an NGA2 simulation
 module simulation
    use precision,           only: WP
-   use geometry,            only: cfg,Lx,Ly,Lz
+   use string,              only: str_medium
+   use geometry,            only: cfg,Lx
    use ddadi_class,         only: ddadi
    use hypre_str_class,     only: hypre_str
    use lowmach_class,       only: lowmach
-   use vdscalar_class,      only: vdscalar
    use multivdscalar_class, only: multivdscalar
    use aencodernet_class,   only: aencodernet
    use chsourcenet_class,   only: chsourcenet
@@ -14,19 +14,17 @@ module simulation
    use ensight_class,       only: ensight
    use event_class,         only: event
    use monitor_class,       only: monitor
-   use parallel,            only: parallel_time
-   use fcmech
    implicit none
    private
 
-   !> Single low Mach flow solver and scalar solver and corresponding time tracker
+   !> Single phase low Mach flow solver, scalar solver, and corresponding time tracker
    type(hypre_str),     public :: ps
    type(ddadi),         public :: vs,ss
    type(lowmach),       public :: fs
-   type(multivdscalar), public :: msc
+   type(multivdscalar), public :: sc
    type(timetracker),   public :: time
 
-   !> Machine learning interface
+   !> Artificial neural networks
    type(aencodernet) :: aen
    type(chsourcenet) :: csn
    type(trnsportnet) :: trn
@@ -43,27 +41,26 @@ module simulation
    type(monitor) :: mfile,cflfile!,consfile
 
    !> Private work arrays
-   real(WP), dimension(:,:,:),   allocatable :: resU,resV,resW,resRHO
-   real(WP), dimension(:,:,:),   allocatable :: Ui,Vi,Wi
-   real(WP), dimension(:,:,:),   allocatable :: SC_init
-   real(WP), dimension(:,:,:,:), allocatable :: resSC,SCtmp,SC_src
+   real(WP), dimension(:,:,:,:), allocatable :: resSC,SCtmp,SC_src    !< Scalar solver arrays
+   logical , dimension(:,:,:,:), allocatable :: bqflag                !< Flag for bquick scheme
+   real(WP), dimension(:,:,:),   allocatable :: resU,resV,resW,resRHO !< Residuals
+   real(WP), dimension(:,:,:),   allocatable :: Ui,Vi,Wi              !< Cell-centred velocity components
+   real(WP), dimension(:,:,:),   allocatable :: SC_init               !< Initial condition for scalar field
    real(WP), dimension(:,:,:),   allocatable :: T                     !< Temperature
    real(WP), dimension(:),       allocatable :: Y_sub                 !< Mass fraction of species that are used by networks
+   real(WP), dimension(:),       allocatable :: Y_init                !< Initial mass fractions
    real(WP), dimension(:),       allocatable :: hY                    !< Enthalpy and mass fractions of sub species
    real(WP), dimension(:),       allocatable :: TYS                   !< Temperature, mass fractions, and source terms of sub species
-   real(WP), dimension(4)                    :: trnprop               !< Transport properties: Temperature, logarithm of density, viscosity, and scalar diffusivity
-
-   !> Flag for bquick scheme
-   logical, dimension(:,:,:,:), allocatable :: bqflag
-
-   !> Initialization zone
-   real(WP) :: L_buffer,L_faded
+   real(WP), dimension(4)                    :: trnprop,trnprop_tmp   !< Transport properties: Temperature, logarithm of density, viscosity, and scalar diffusivity
 
    !> Post process for species mass fractions
-   integer :: nY                                                      !< Number of output species
-   character(len=str_medium), dimension(:), allocatable :: Y_name     !< Output species names
-   real(WP), dimension(:,:,:,:), allocatable :: Y                     !< Output species mass fractions
-   integer, dimension(:), allocatable :: iY_in_sub                    !< The indices of post-process species in the sub-species list
+   integer :: n_Y                                                     !< Number of output species
+   character(len=str_medium), dimension(:), allocatable :: Y_name     !< Names of output species
+   real(WP), dimension(:,:,:,:),            allocatable :: Y          !< Output species mass fractions (must exist in Y_sub)
+   integer, dimension(:),                   allocatable :: iY_in_sub  !< The indices of post-process species in the sub-species list
+
+   !> Scalar and species indices
+   integer :: isc,iY
 
    !> Simulation sub-routines
    public :: simulation_init,simulation_run,simulation_final
@@ -149,8 +146,8 @@ contains
    end function xm_locator_sc
 
 
-!> Function that localizes the right domain boundary
-      function xp_locator_sc(pg,i,j,k) result(isIn)
+   !> Function that localizes the right domain boundary
+   function xp_locator_sc(pg,i,j,k) result(isIn)
       use pgrid_class, only: pgrid
       class(pgrid),intent(in) :: pg
       integer,intent(in) :: i,j,k
@@ -161,22 +158,22 @@ contains
 
 
    !> Initialize a double delta scalar field
-   subroutine ignition_doubledelta(Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
+   subroutine doubledelta_SCinit(Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
       use precision
       use param,   only: param_read
       use random,  only: random_normal,random_uniform
-      use,intrinsic :: iso_c_binding
+      use, intrinsic :: iso_c_binding
       implicit none
 
       ! Buffer and faded region lenght
       real(WP),intent(in) :: Lbu,Lfd
       integer, intent(in) :: imin,imax,jmin,jmax,kmin,kmax
-      real(WP) :: pi,ke, dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi,kk2
+      real(WP) :: pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi,kk2
       ! Complex and real buffer
       complex(WP), dimension(:,:,:), pointer :: Cbuf
       real(WP),    dimension(:,:,:), pointer :: Rbuf
       ! Spectrum computation
-      real(WP) :: spec_amp,eps, amp_disc,energy_spec
+      real(WP) :: spec_amp,eps,amp_disc,energy_spec
       complex(WP), dimension(:,:,:), pointer :: ak,bk
       ! Other
       integer     :: i,j,k,nk,nx,ny,nz
@@ -282,6 +279,7 @@ contains
                else
                   Cbuf(i,j,k)=Cbuf(i,j,k)*(kc/kk)**2
                end if
+
             end do
          end do
       end do
@@ -309,7 +307,7 @@ contains
 
       ! Fade to zero in the buffer region
       call fade_borders(SC_init,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
-   end subroutine ignition_doubledelta
+   end subroutine doubledelta_SCinit
 
 
    !> Initialize PP spectrum for velocity
@@ -317,7 +315,7 @@ contains
    !    use precision
    !    use param,   only: param_read
    !    use random,  only: random_normal,random_uniform
-   !    use,intrinsic :: iso_c_binding
+   !    use, intrinsic :: iso_c_binding
    !    implicit none
 
    !    ! Buffer and faded region lenght
@@ -635,23 +633,15 @@ contains
 
    !> Initialization of problem solver
    subroutine simulation_init
-      use param, only: param_read
+      use param, only: param_read,param_getsize,param_exists
+      use messager, only: die
       implicit none
 
 
-      read_input: block
-      use param,   only: param_read,param_getsize
-         ! Thermodynamic pressure
-         ! call param_read('Pressure',Pthermo)
-         ! Buffer region length
-         call param_read('Buffer region length',L_buffer)
-         ! Faded region length
-         call param_read('Faded region length',L_faded)
-         ! Species mass fractions
-         nY=param_getsize('Post process species')
-      end block read_input
+      ! Read-in the number of post processed species
+      n_Y=param_getsize('Ensight output species')
 
-
+      
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
          use hypre_str_class, only: pcg_pfmg,smg
@@ -680,7 +670,7 @@ contains
       create_ann: block
          use string, only: str_medium
          character(len=str_medium) :: aenfname,csnfname,trnfname
-         ! Read in the data file names
+         ! Read-in the data file names
          call param_read('Auto encoder'        ,aenfname)
          call param_read('Chemical source'     ,csnfname)
          call param_read('Transport properties',trnfname)
@@ -691,8 +681,8 @@ contains
          csn=chsourcenet(cfg=cfg,fdata=csnfname,name='Chemical source network')
          call csn%print()
          ! The transport properties network object
-         trn=trnsportnet(cfg=cfg,fdata=csnfname,name='Chemical source network')
-         call csn%print()
+         trn=trnsportnet(cfg=cfg,fdata=trnfname,name='Transport properties network')
+         call trn%print()
          ! Species sub-array size
          nY_sub=size(aen%vectors(aen%ivec_spec_inds)%vector)
       end block create_ann
@@ -702,51 +692,52 @@ contains
       create_scalar_solver: block
          use multivdscalar_class, only: dirichlet,neumann,quick,bquick
          ! Create scalar solver
-         msc=multivdscalar(cfg=cfg,scheme=bquick,nscalar=aen%nvar,name='Variable density multi scalar')
+         sc=multivdscalar(cfg=cfg,scheme=bquick,nscalar=aen%nvar,name='Variable density multi scalar')
          ! Boundary conditions
-         call msc%add_bcond(name='ym_outflow',type=neumann,locator=ym_locator_sc,dir='-y')
-         call msc%add_bcond(name='yp_outflow',type=neumann,locator=yp_locator_sc,dir='+y')
-         call msc%add_bcond(name='xm_outflow',type=neumann,locator=xm_locator_sc,dir='-x')
-         call msc%add_bcond(name='xp_outflow',type=neumann,locator=xp_locator_sc,dir='+x')
+         call sc%add_bcond(name='ym_outflow',type=neumann,locator=ym_locator_sc,dir='-y')
+         call sc%add_bcond(name='yp_outflow',type=neumann,locator=yp_locator_sc,dir='+y')
+         call sc%add_bcond(name='xm_outflow',type=neumann,locator=xm_locator_sc,dir='-x')
+         call sc%add_bcond(name='xp_outflow',type=neumann,locator=xp_locator_sc,dir='+x')
          ! Configure implicit scalar solver
          ss=ddadi(cfg=cfg,name='Scalar',nst=13)
          ! Setup the solver
-         call msc%setup(implicit_solver=ss)
+         call sc%setup(implicit_solver=ss)
       end block create_scalar_solver
 
 
       ! Allocate work arrays
       allocate_work_arrays: block
+         use fcmech, only: nspec
          ! Flow solver
-         allocate (resU  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
-         allocate (resV  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
-         allocate (resW  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
-         allocate (resRHO(fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
-         allocate (Ui    (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
-         allocate (Vi    (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
-         allocate (Wi    (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
+         allocate(resU  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
+         allocate(resV  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
+         allocate(resW  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
+         allocate(resRHO(fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
+         allocate(Ui    (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
+         allocate(Vi    (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
+         allocate(Wi    (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
          ! Scalar solver
-         allocate (resSC (msc%cfg%imino_:msc%cfg%imaxo_,msc%cfg%jmino_:msc%cfg%jmaxo_,msc%cfg%kmino_:msc%cfg%kmaxo_,msc%nscalar))
-         allocate (SCtmp (msc%cfg%imino_:msc%cfg%imaxo_,msc%cfg%jmino_:msc%cfg%jmaxo_,msc%cfg%kmino_:msc%cfg%kmaxo_,msc%nscalar))
-         allocate (bqflag(cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_,msc%nscalar))
-         ! Initialization
-         allocate (SC_init(msc%cfg%imin:msc%cfg%imax,msc%cfg%jmin:msc%cfg%jmax,msc%cfg%kmin:msc%cfg%kmax))
-         ! Combustion and ANN
-         allocate(T(msc%cfg%imino_:msc%cfg%imaxo_,msc%cfg%jmino_:msc%cfg%jmaxo_,msc%cfg%kmino_:msc%cfg%kmaxo_))
-         allocate(SC_src(msc%cfg%imino_:msc%cfg%imaxo_,msc%cfg%jmino_:msc%cfg%jmaxo_,msc%cfg%kmino_:msc%cfg%kmaxo_,aen%nvar)); SC_src=0.0_WP
+         allocate(resSC  (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,sc%nscalar))
+         allocate(SCtmp  (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,sc%nscalar))
+         allocate(bqflag (cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_,sc%nscalar))
+         allocate(SC_src (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,aen%nvar)); SC_src=0.0_WP
+         allocate(SC_init(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
+         ! Combustion
+         allocate(T(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
+         allocate(Y(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,n_Y))
          allocate(Y_sub(nY_sub))  ; Y_sub=0.0_WP
          allocate(hY(nY_sub+1))   ; hY   =0.0_WP
          allocate(TYS(2*nY_sub+1)); TYS  =0.0_WP
          allocate(spec_name(nspec))
-         allocate(Y(msc%cfg%imino_:msc%cfg%imaxo_,msc%cfg%jmino_:msc%cfg%jmaxo_,msc%cfg%kmino_:msc%cfg%kmaxo_,nY))
-         allocate(Y_name(nY))
-         allocate(iY_in_sub(nY)); iY_in_sub=0
+         allocate(Y_name(n_Y))
+         allocate(iY_in_sub(n_Y)); iY_in_sub=0
+         allocate(Y_init(nY_sub)); Y_init=0.0_WP
       end block allocate_work_arrays
 
 
       ! Initialize time tracker with 2 subiterations
       initialize_timetracker: block
-         time=timetracker(amRoot=fs%cfg%amRoot,name='ann_rector2d')
+         time=timetracker(amRoot=fs%cfg%amRoot,name='ann_reactor2d')
          call param_read('Max timestep size',time%dtmax)
          call param_read('Max cfl number',time%cflmax)
          call param_read('Max time',time%tmax)
@@ -755,99 +746,126 @@ contains
       end block initialize_timetracker
 
 
-      ! Initialize our scalar fields
-      initialize_scalar: block
-         use param,               only: param_exists,param_read
-         use string,              only: str_long
-         use messager,            only: die
-         use multivdscalar_class, only: bcond
-         use parallel,            only: MPI_REAL_WP
-         integer  :: i,j,k,ierr
-         integer  :: imin,imax,jmin,jmax,kmin,kmax
-         integer  :: iY,isub,ispec,isub_n2
-         real(WP) :: T_init,h_init,Y_HMN_init,Y_XC12H26_init,Y_N2_init,Y_O2_init,Y_n2_buf,T_buf
-         real(WP), dimension(:), allocatable :: Y_init
-         type(bcond), pointer :: mybc
+      ! Initialize species
+      initialize_species: block
+         use string, only: str_long
+         use, intrinsic :: iso_fortran_env, only: output_unit
+         integer  :: iY_sub,ispec
          character(len=str_long) :: errmsg
 
-         ! Allocate mamory for initial mass fractions
-         allocate(Y_init(nY_sub)); Y_init=0.0_WP
-
-         ! Read in initial conditions
-         call param_read('Initial temperature',T_init)
-         call param_read('Initial enthalpy'   ,h_init)
-         call param_read('Buffer N2'          ,Y_n2_buf)
-         call param_read('Buffer temperature' ,T_buf)
-         do isub=1,nY_sub
-            ispec=aen%vectors(aen%ivec_spec_inds)%vector(isub)
-            if (trim(spec_name(isub)).eq.'N2') isub_n2=isub
-            if (param_exists('Initial '//trim(spec_name(ispec)))) then
-               call param_read('Initial '//trim(spec_name(ispec)),Y_init(isub))
-            end if
-         end do 
-
-         ! Get the species names
+         ! Get all the species names in the mechanism
          call fcmech_get_speciesnames(spec_name)
-         call param_read('Post process species',Y_name)
+         ! Read-in the names of post processed species
+         call param_read('Ensight output species',Y_name)
 
-         ! Get species indices
-         do iY=1,nY
-            do isub=1,nY_sub
-               ispec=aen%vectors(aen%ivec_spec_inds)%vector(isub)
-               if (spec_name(ispec).eq.Y_name(iY)) then
-                  iY_in_sub(iY)=isub
+         ! Print species information
+         if (cfg%amRoot) then
+
+            ! Sub-array
+            write(output_unit,'("Sub-array species used in the ann:")',advance='No')
+            do iY_sub=1,nY_sub
+               if (cfg%amRoot) write(output_unit,'(a)',advance='No') ' '//trim(spec_name(int(aen%vectors(aen%ivec_spec_inds)%vector(iY_sub))))
+            end do
+            write(output_unit,'(" ")')
+
+            ! Post processed species
+            write(output_unit,'("Post processed species:")',advance='No')
+            do iY=1,n_Y
+               write(output_unit,'(a)',advance='No') ' '//trim(Y_name(iY))
+            end do
+            write(output_unit,'(" ")')
+
+         end if
+
+         ! Process the species indices and set initial mass fractions
+         do iY_sub=1,nY_sub
+            ! Global species index
+            ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
+            ! Initial values
+            if (param_exists('Initial '//trim(spec_name(ispec)))) then
+               call param_read('Initial '//trim(spec_name(ispec)),Y_init(iY_sub))
+            end if
+         end do
+         print*,''
+
+         ! Localize post processed species inside the ann species sub-array
+         do iY=1,n_Y
+            do iY_sub=1,nY_sub
+               ! Global species index
+               ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
+               ! Local species index in the sub-array species
+               if (trim(spec_name(ispec)).eq.trim(Y_name(iY))) then
+                  iY_in_sub(iY)=iY_sub
                   exit
                end if
             end do
          end do
-         do iY=1,nY
+
+         ! Check if we have found all the required species
+         do iY=1,n_Y
             if (iY_in_sub(iY).eq.0) then
-               errmsg='Could not find '//Y_name(iY)//' in the sub-species list.'
+               errmsg='Could not find '//trim(Y_name(iY))//' in the sub-species list. Make sure that '//trim(Y_name(iY))//' exists in the sub-array species used by the ANN.'
                call die(trim(errmsg))
             end if
          end do
+      end block initialize_species
+
+
+      ! Initialize our scalar fields
+      initialize_scalar: block
+         use messager, only: die
+         use parallel, only: MPI_REAL_WP
+         integer  :: i,j,k,ierr
+         integer  :: imin,imax,jmin,jmax,kmin,kmax
+         real(WP) :: L_buffer,L_faded
+         real(WP) :: T_init,h_init,T_buf
+
+         ! Read-in inputs
+         call param_read('Initial temperature' ,T_init) ! Should we directly set T or compute it using ann? I think both should be the same given we correctly set h_init
+         call param_read('Initial enthalpy'    ,h_init)
+         call param_read('Buffer temperature'  ,T_buf)
+         call param_read('Buffer region length',L_buffer)
+         call param_read('Faded region length' ,L_faded)
 
          ! Find bounds of the region to be initialized
          call get_borders(L_buffer,imin,imax,jmin,jmax,kmin,kmax)
          ! Initialize the global double delta scalar field
-         if (msc%cfg%amRoot) call ignition_doubledelta(L_buffer,L_faded,imin,imax,jmin,jmax,kmin,kmax)
+         if (sc%cfg%amRoot) call doubledelta_SCinit(L_buffer,L_faded,imin,imax,jmin,jmax,kmin,kmax)
          ! Communicate information
-         call MPI_BCAST(SC_init,msc%cfg%nx*msc%cfg%ny*msc%cfg%nz,MPI_REAL_WP,0,msc%cfg%comm,ierr)
+         call MPI_BCAST(SC_init,sc%cfg%nx*sc%cfg%ny*sc%cfg%nz,MPI_REAL_WP,0,sc%cfg%comm,ierr)
 
          ! Set initial conditions
-         do k=msc%cfg%kmin_,msc%cfg%kmax_
-            do j=msc%cfg%jmin_,msc%cfg%jmax_
-               do i=msc%cfg%imin_,msc%cfg%imax_
+         do k=sc%cfg%kmin_,sc%cfg%kmax_
+            do j=sc%cfg%jmin_,sc%cfg%jmax_
+               do i=sc%cfg%imin_,sc%cfg%imax_
 
                   ! Initialize thrmochemical variables
                   h_init=SC_init(i,j,k)*h_init ! I'm not sure if this good for enthalpy + What value should buffer zone have?
                   Y_sub =SC_init(i,j,k)*Y_init
-                  ! The following if statement would spoil the fading for N2 and T
+                  ! The following if statement would spoil the fading for T
                   if ((i.ge.imin).and.(i.le.imax).and.(j.ge.jmin).and.(j.le.jmax).and.(k.ge.kmin).and.(k.le.kmax)) then
-                     T(i,j,k)      =T_init
-                     Y_sub(isub_n2)=SC_init(i,j,k)*Y_N2_init
+                     T(i,j,k)=T_init
                   else
-                     T(i,j,k)      =T_buf
-                     Y_sub(isub_n2)=Y_n2_buf
+                     T(i,j,k)=T_buf
                   end if
 
                   ! Map Y and h to the neural network scalars
                   call aen%transform_inputs([h_init,Y_sub],hY)
-                  call aen%encode(hY,msc%SC(i,j,k,:))
+                  call aen%encode(hY,sc%SC(i,j,k,:))
 
                   ! Get transport properties
-                  call trn%get_transport(msc%SC(i,j,k,:),trnprop)
-                  call trn%inverse_transform_outputs(trnprop,trnprop)
-                  T(i,j,k)         =trnprop(1)
-                  msc%rho(i,j,k)   =trnprop(2)
-                  fs%visc(i,j,k)   =trnprop(3)
-                  msc%diff(i,j,k,:)=trnprop(4)
-                  msc%rho(i,j,k)=exp(msc%rho(i,j,k))
+                  call trn%get_transport(sc%SC(i,j,k,:),trnprop_tmp)
+                  call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
+                  ! T(i,j,k)        =trnprop(1) ! Should we directly set T or compute it using ann? I think both should be the same given we correctly set h_init
+                  sc%rho(i,j,k)   =trnprop(2)
+                  fs%visc(i,j,k)  =trnprop(3)
+                  sc%diff(i,j,k,:)=trnprop(4)
+                  sc%rho(i,j,k)   =exp(sc%rho(i,j,k))
 
-                  ! Map the neural network scalars to Y (for visualization purposes)
-                  call aen%decode(msc%SC(i,j,k,:),TYS)
-                  call aen%inverse_transform_outputs(TYS(1:nY_sub+1),hY)
-                  do iY=1,nY
+                  ! Map the neural network scalars to Y (for visualization purposes at t=0)
+                  call aen%decode(sc%SC(i,j,k,:),TYS)
+                  call aen%inverse_transform_outputs(TYS,hY,nY_sub+1)
+                  do iY=1,n_Y
                      Y(i,j,k,iY)=hY(iY_in_sub(iY)+1)
                   end do
 
@@ -856,13 +874,15 @@ contains
          end do
 
          ! Sync fields
-         call msc%cfg%sync(msc%SC)
-         call msc%cfg%sync(T)
-         call msc%cfg%sync(msc%rho)
-         call msc%cfg%sync(msc%diff)
-         call msc%cfg%sync(fs%visc)
-         do iY=1,nY
-            call msc%cfg%sync(Y(:,:,:,iY))
+         call sc%cfg%sync(T)
+         call sc%cfg%sync(sc%rho)
+         call sc%cfg%sync(fs%visc)
+         do isc=1,sc%nscalar
+            call sc%cfg%sync(sc%SC  (:,:,:,isc))
+            call sc%cfg%sync(sc%diff(:,:,:,isc))
+         end do
+         do iY=1,n_Y
+            call sc%cfg%sync(Y(:,:,:,iY))
          end do
 
          ! Release unused memory
@@ -881,7 +901,7 @@ contains
          ! Zero initial field
          fs%U=0.0_WP; fs%V=0.0_WP; fs%W=0.0_WP
          ! Set density from scalar
-         fs%rho=msc%rho
+         fs%rho=sc%rho
          ! Form momentum
          call fs%rho_multiply()
          ! Apply all other boundary conditions
@@ -896,9 +916,8 @@ contains
 
       ! Add Ensight output
       create_ensight: block
-         integer :: iY
          ! Create Ensight output from cfg
-         ens_out=ensight(cfg=cfg,name='ann_rector2d')
+         ens_out=ensight(cfg=cfg,name='ann_reactor2d')
          ! Create event for Ensight output
          ens_evt=event(time=time,name='Ensight output')
          call param_read('Ensight output period',ens_evt%tper)
@@ -906,10 +925,10 @@ contains
          call ens_out%add_scalar('pressure'   ,fs%P)
          call ens_out%add_vector('velocity'   ,Ui,Vi,Wi)
          call ens_out%add_scalar('divergence' ,fs%div)
-         call ens_out%add_scalar('density'    ,msc%rho)
+         call ens_out%add_scalar('density'    ,sc%rho)
          call ens_out%add_scalar('viscosity'  ,fs%visc)
          call ens_out%add_scalar('temperature',T)
-         do iY=1,nY
+         do iY=1,n_Y
             call ens_out%add_scalar('Y_'//Y_name(iY),Y(:,:,:,iY))
          end do
          ! Output to ensight
@@ -922,8 +941,8 @@ contains
          ! Prepare some info about fields
          call fs%get_cfl(time%dt,time%cfl)
          call fs%get_max()
-         call msc%get_max()
-         call msc%get_int()
+         call sc%get_max()
+         call sc%get_int()
          ! Create simulation monitor
          mfile=monitor(fs%cfg%amRoot,'simulation')
          call mfile%add_column(time%n,'Timestep number')
@@ -934,8 +953,8 @@ contains
          call mfile%add_column(fs%Vmax,'Vmax')
          call mfile%add_column(fs%Wmax,'Wmax')
          call mfile%add_column(fs%Pmax,'Pmax')
-         call mfile%add_column(msc%rhomax,'RHOmax')
-         call mfile%add_column(msc%rhomin,'RHOmin')
+         call mfile%add_column(sc%rhomax,'RHOmax')
+         call mfile%add_column(sc%rhomin,'RHOmin')
          call mfile%add_column(fs%divmax,'Maximum divergence')
          call mfile%add_column(fs%psolv%it,'Pressure iteration')
          call mfile%add_column(fs%psolv%rerr,'Pressure error')
@@ -955,9 +974,9 @@ contains
          ! consfile=monitor(fs%cfg%amRoot,'conservation')
          ! call consfile%add_column(time%n,'Timestep number')
          ! call consfile%add_column(time%t,'Time')
-         ! call consfile%add_column(msc%SCint,'SC integral')
-         ! call consfile%add_column(msc%rhoint,'RHO integral')
-         ! call consfile%add_column(msc%rhoSCint,'rhoSC integral')
+         ! call consfile%add_column(sc%SCint,'SC integral')
+         ! call consfile%add_column(sc%rhoint,'RHO integral')
+         ! call consfile%add_column(sc%rhoSCint,'rhoSC integral')
          ! call consfile%write()
       end block create_monitor
 
@@ -968,7 +987,6 @@ contains
    subroutine simulation_run
       implicit none
       integer :: i,j,k
-      integer :: isc,iY
 
 
       ! Perform time integration
@@ -980,8 +998,8 @@ contains
          call time%increment()
 
          ! Remember old scalar
-         msc%rhoold=msc%rho
-         msc%SCold=msc%SC
+         sc%rhoold=sc%rho
+         sc%SCold =sc%SC
 
          ! Remember old velocity and momentum
          fs%rhoold=fs%rho
@@ -990,10 +1008,10 @@ contains
          fs%Wold=fs%W; fs%rhoWold=fs%rhoW
 
          ! Get the RHS from chsourcenet
-         do k=msc%cfg%kmino_,msc%cfg%kmaxo_
-            do j=msc%cfg%jmino_,msc%cfg%jmaxo_
-               do i=msc%cfg%imino_,msc%cfg%imaxo_
-                  call csn%get_src(msc%SC(i,j,k,:),SC_src(i,j,k,:))
+         do k=sc%cfg%kmino_,sc%cfg%kmaxo_
+            do j=sc%cfg%jmino_,sc%cfg%jmaxo_
+               do i=sc%cfg%imino_,sc%cfg%imaxo_
+                  call csn%get_src(sc%SC(i,j,k,:),SC_src(i,j,k,:))
                end do
             end do
          end do
@@ -1002,27 +1020,27 @@ contains
          do while (time%it.le.time%itmax)
 
             ! ============= SCALAR SOLVER ============= !
-
+            
             ! Reset metric for bquick
-            call msc%metric_reset()
+            call sc%metric_reset()
 
             ! Build mid-time scalar
-            msc%SC=0.5_WP*(msc%SC+msc%SCold)
+            sc%SC=0.5_WP*(sc%SC+sc%SCold)
 
             ! Explicit calculation of drhoSC/dt from scalar equation
-            call msc%get_drhoSCdt(resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            call sc%get_drhoSCdt(resSC,fs%rhoU,fs%rhoV,fs%rhoW)
 
             ! Assemble explicit residual
-            do isc=1,msc%nscalar
-               resSC(:,:,:,isc)=time%dt*resSC(:,:,:,isc)-2.0_WP*msc%rho*msc%SC(:,:,:,isc)+(msc%rho+msc%rhoold)*msc%SCold(:,:,:,isc)+time%dt*msc%rho*SC_src(:,:,:,isc)
-               SCtmp(:,:,:,isc)=2.0_WP*msc%SC(:,:,:,isc)-msc%SCold(:,:,:,isc)+resSC(:,:,:,isc)/msc%rho
+            do isc=1,sc%nscalar
+               resSC(:,:,:,isc)=time%dt*resSC(:,:,:,isc)-2.0_WP*sc%rho*sc%SC(:,:,:,isc)+(sc%rho+sc%rhoold)*sc%SCold(:,:,:,isc)+time%dt*sc%rho*SC_src(:,:,:,isc)
+               SCtmp(:,:,:,isc)=2.0_WP*sc%SC(:,:,:,isc)-sc%SCold(:,:,:,isc)+resSC(:,:,:,isc)/sc%rho
             end do
 
             ! Apply it to get explicit scalar prediction
-            do isc=1,msc%nscalar
-               do k=msc%cfg%kmino_,msc%cfg%kmaxo_
-                  do j=msc%cfg%jmino_,msc%cfg%jmaxo_
-                     do i=msc%cfg%imino_,msc%cfg%imaxo_
+            do isc=1,sc%nscalar
+               do k=sc%cfg%kmino_,sc%cfg%kmaxo_
+                  do j=sc%cfg%jmino_,sc%cfg%jmaxo_
+                     do i=sc%cfg%imino_,sc%cfg%imaxo_
                         if ((SCtmp(i,j,k,isc).le.0.0_WP).or.(SCtmp(i,j,k,isc).ge.1.0_WP)) then
                            bqflag(i,j,k,isc)=.true.
                         else
@@ -1034,48 +1052,50 @@ contains
             end do
 
             ! Adjust metrics
-            call msc%metric_adjust(SCtmp,bqflag)
+            call sc%metric_adjust(SCtmp,bqflag)
 
             ! Recompute drhoSC/dt
-            call msc%get_drhoSCdt(resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            call sc%get_drhoSCdt(resSC,fs%rhoU,fs%rhoV,fs%rhoW)
 
             ! Assemble explicit residual
-            do isc=1,msc%nscalar
-               resSC(:,:,:,isc)=time%dt*resSC(:,:,:,isc)-2.0_WP*msc%rho*msc%SC(:,:,:,isc)+(msc%rho+msc%rhoold)*msc%SCold(:,:,:,isc)+time%dt*msc%rho*SC_src(:,:,:,isc)
+            do isc=1,sc%nscalar
+               resSC(:,:,:,isc)=time%dt*resSC(:,:,:,isc)-2.0_WP*sc%rho*sc%SC(:,:,:,isc)+(sc%rho+sc%rhoold)*sc%SCold(:,:,:,isc)+time%dt*sc%rho*SC_src(:,:,:,isc)
             end do
 
             ! Form implicit residual
-            call msc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            call sc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
 
             ! Apply these residuals
-            msc%SC=2.0_WP*msc%SC-msc%SCold+resSC
+            sc%SC=2.0_WP*sc%SC-sc%SCold+resSC
 
             ! Apply boundary conditions on the resulting field
-            call msc%apply_bcond(time%t,time%dt)
+            call sc%apply_bcond(time%t,time%dt)
+
             ! =============================================
 
             ! ============ UPDATE PROPERTIES ====================
 
             ! Get transport properties
-            do k=msc%cfg%kmino_,msc%cfg%kmaxo_
-               do j=msc%cfg%jmino_,msc%cfg%jmaxo_
-                  do i=msc%cfg%imino_,msc%cfg%imaxo_
-                     call trn%get_transport(msc%SC(i,j,k,:),trnprop)
-                     call trn%inverse_transform_outputs(trnprop,trnprop)
-                     T(i,j,k)         =trnprop(1)
-                     msc%rho(i,j,k)   =trnprop(2)
-                     fs%visc(i,j,k)   =trnprop(3)
-                     msc%diff(i,j,k,:)=trnprop(4)
-                     msc%rho(i,j,k)=exp(msc%rho(i,j,k))
+            do k=sc%cfg%kmino_,sc%cfg%kmaxo_
+               do j=sc%cfg%jmino_,sc%cfg%jmaxo_
+                  do i=sc%cfg%imino_,sc%cfg%imaxo_
+                     call trn%get_transport(sc%SC(i,j,k,:),trnprop_tmp)
+                     call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
+                     T(i,j,k)        =trnprop(1)
+                     sc%rho(i,j,k)   =trnprop(2)
+                     fs%visc(i,j,k)  =trnprop(3)
+                     sc%diff(i,j,k,:)=trnprop(4)
+                     sc%rho(i,j,k)   =exp(sc%rho(i,j,k))
                   end do
                end do
             end do
+
             ! ===================================================
 
             ! ============ VELOCITY SOLVER ======================
 
             ! Build n+1 density
-            fs%rho=0.5_WP*(msc%rho+msc%rhoold)
+            fs%rho=0.5_WP*(sc%rho+sc%rhoold)
 
             ! Build mid-time velocity and momentum
             fs%U=0.5_WP*(fs%U+fs%Uold); fs%rhoU=0.5_WP*(fs%rhoU+fs%rhoUold)
@@ -1103,7 +1123,7 @@ contains
             call fs%rho_multiply()
 
             ! Solve Poisson equation
-            call msc%get_drhodt(dt=time%dt, drhodt=resRHO)
+            call sc%get_drhodt(dt=time%dt, drhodt=resRHO)
             call fs%correct_mfr(drhodt=resRHO)
             call fs%get_div(drhodt=resRHO)
             fs%psolv%rhs=-fs%cfg%vol*fs%div/time%dtmid
@@ -1118,6 +1138,7 @@ contains
             fs%rhoV=fs%rhoV-time%dtmid*resV
             fs%rhoW=fs%rhoW-time%dtmid*resW
             call fs%rho_divide
+
             ! ===================================================
 
             ! Increment sub-iteration counter
@@ -1127,17 +1148,17 @@ contains
 
          ! Recompute interpolated velocity and divergence
          call fs%interp_vel(Ui,Vi,Wi)
-         call msc%get_drhodt(dt=time%dt, drhodt=resRHO)
+         call sc%get_drhodt(dt=time%dt, drhodt=resRHO)
          call fs%get_div(drhodt=resRHO)
 
          ! Map the neural network scalars to T and Y
-         do k=msc%cfg%kmino_,msc%cfg%kmaxo_
-            do j=msc%cfg%jmino_,msc%cfg%jmaxo_
-               do i=msc%cfg%imino_,msc%cfg%imaxo_
-                  call aen%decode(msc%SC(i,j,k,:),TYS)
-                  call aen%inverse_transform_outputs(TYS(1:nY_sub+1),hY)
+         do k=sc%cfg%kmino_,sc%cfg%kmaxo_
+            do j=sc%cfg%jmino_,sc%cfg%jmaxo_
+               do i=sc%cfg%imino_,sc%cfg%imaxo_
+                  call aen%decode(sc%SC(i,j,k,:),TYS)
+                  call aen%inverse_transform_outputs(TYS,hY,nY_sub+1)
                   T(i,j,k)=hY(1)
-                  do iY=1,nY
+                  do iY=1,n_Y
                      Y(i,j,k,iY)=hY(iY_in_sub(iY)+1)
                   end do
                end do
@@ -1149,8 +1170,8 @@ contains
 
          ! Perform and output monitoring
          call fs%get_max()
-         call msc%get_max()
-         call msc%get_int()
+         call sc%get_max()
+         call sc%get_int()
          call mfile%write()
          call cflfile%write()
          ! call consfile%write()
@@ -1172,9 +1193,9 @@ contains
       ! timetracker
 
       ! Deallocate work arrays
-      deallocate(Y_sub,hY,TYS)
-      deallocate (resSC,resU,resV,resW,resRHO,Ui,Vi,Wi,SC_init,T)
-      deallocate(resSC,SCtmp,SC_src)
+      deallocate(spec_name,Y_sub,hY,TYS,iY_in_sub,Y_name)
+      deallocate(resU,resV,resW,resRHO,Ui,Vi,Wi,T)
+      deallocate(resSC,SCtmp,SC_src,bqflag,Y)
 
 
    end subroutine simulation_final

@@ -5,50 +5,37 @@ Partition : 8 1 1
 Lx : 0.01
 Ly : 0.01
 Lz : 0.0001
-nx : 128
-ny : 128
+nx : 100
+ny : 100
 nz : 1
 
-# Fluid properties
-Dynamic viscosity   : 0.001
-Dynamic diffusivity : 0.001
-
 # Initial conditions
-ks/ko : 5
-kc/ks : 3
-Buffer region length : 0.25
-Faded region length  : 0.05
-Velocity fluctuation : 0.1
-Energetic scale      : 0.3
-Dissipative scale    : 0.01
-Dissipation          : 1e-3
-Pressure             : 3.4e6
+ks/ko                : 5
+kc/ks                : 3
+Buffer region length : 0.0025
+Faded region length  : 0.0005
+Initial enthalpy     : 4.0315255e+05
+Initial HMN          : 1.0810837e-02
+Initial XC12H26      : 5.2061660e-02
+Initial O2           : 2.1835044e-01
+Initial temperature  : 750
+Buffer temperature   : 300
 
 # Neural network data files
 Auto encoder         : auto_encoder.bin
 Chemical source      : chem_sources.bin
 Transport properties : fluid_trnspt.bin
 
-# Combustion
-Initial temperature  : 750
-Initial enthalpy     : 4.0315255e+05
-Initial HMN          : 1.0810837e-02
-Initial XC12H26      : 5.2061660e-02
-Initial N2           : 7.1877706e-01
-Initial O2           : 2.1835044e-01
-Buffer N2            : 1
-Buffer temperature   : 300
-Post process species : OH, O2, N2
-
 # Time integration
-Max timestep size :	1e-5
-Max time          : 1e-2
+Max timestep size : 1e-5
+Max time          : 5e-3
 Max cfl number    : 0.8
-Inner iterations  : 5
+Inner iterations  : 2
 
 # Pressure solver
 Pressure tolerance : 1e-10
-Pressure iteration : 100
+Pressure iteration : 50
 
 # Ensight output
-Ensight output period : 1e-6
+Ensight output period  : 5e-4
+Ensight output species : XC12H26, HMN, OH, O2

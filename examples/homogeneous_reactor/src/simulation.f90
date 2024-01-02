@@ -1,12 +1,13 @@
 !> Various definitions and tools for running an NGA2 simulation
 module simulation
    use precision,         only: WP
+   use string,            only: str_medium
    use geometry,          only: cfg
    use aencodernet_class, only: aencodernet
    use chsourcenet_class, only: chsourcenet
    use timetracker_class, only: timetracker
    use monitor_class,     only: monitor
-   use fcmech
+   use fcmech,            only: nspec
    implicit none
    private
 

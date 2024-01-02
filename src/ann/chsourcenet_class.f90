@@ -15,8 +15,6 @@ module chsourcenet_class
 
       ! Indices of vectors
       integer :: ivec_lay0_bias,ivec_lay1_bias,ivec_lay2_bias,ivec_outp_bias              !< Bias
-      integer :: ivec_x_scale,ivec_y_scale                                                !< Scale
-      integer :: ivec_x_shift,ivec_y_shift                                                !< Shift
 
       ! Indices of matrices
       integer :: imat_lay0_weight,imat_lay1_weight,imat_lay2_weight,imat_outp_weight      !< Weight
@@ -53,7 +51,6 @@ contains
 
       ! Construct the parent object
       self%multimatrix=multimatrix(cfg=cfg,fdata=fdata,name=name)
-
       ! Set the vector indices
       do ivector=1,self%nvector
          select case (trim(self%vectors(ivector)%name))
@@ -65,23 +62,14 @@ contains
                self%ivec_lay2_bias=ivector
             case ('output_bias')
                self%ivec_outp_bias=ivector
-            case ('x_scale')
-               self%ivec_x_scale=ivector
-            case ('y_scale')
-               self%ivec_y_scale=ivector
-            case ('x_shift')
-               self%ivec_x_shift=ivector
-            case ('y_shift')
-               self%ivec_y_shift=ivector
          end select
       end do
-      if(                                                                                     &
-         max(                                                                                 &
-             self%ivec_lay0_bias,self%ivec_lay1_bias,self%ivec_lay2_bias,self%ivec_outp_bias, &
-             self%ivec_x_scale,self%ivec_y_scale,self%ivec_x_shift,self%ivec_y_shift          &
-            )                                                                                 & 
-         .ne.                                                                                 & 
-         self%nvector                                                                         &
+      if(                                                                                    &
+         max(                                                                                &
+             self%ivec_lay0_bias,self%ivec_lay1_bias,self%ivec_lay2_bias,self%ivec_outp_bias &
+            )                                                                                & 
+         .ne.                                                                                & 
+         self%nvector                                                                        &
         ) then
           call die('[chsourcenet constructor] Inconsistent number of vectors')
       end if

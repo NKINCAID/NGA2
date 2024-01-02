@@ -174,13 +174,14 @@ contains
 
 
    !> Inverse transform outputs to match the actual variables
-   subroutine inverse_transform_outputs(this,yraw,ytrf)
+   subroutine inverse_transform_outputs(this,yraw,ytrf,nargs)
       implicit none
       class(aencodernet), intent(inout)   :: this
       real(WP), dimension(:), intent(in)  :: yraw
       real(WP), dimension(:), intent(out) :: ytrf
-      
-      ytrf=yraw*this%vectors(this%ivec_y_scale)%vector+this%vectors(this%ivec_y_shift)%vector
+      integer, intent(in) :: nargs
+
+      ytrf=yraw(1:nargs)*this%vectors(this%ivec_y_scale)%vector(1:nargs)+this%vectors(this%ivec_y_shift)%vector(1:nargs)
    end subroutine inverse_transform_outputs
 
 
