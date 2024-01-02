@@ -1,5 +1,5 @@
 # Parallelization
-Partition : 4 1 1
+Partition : 8 1 1
 
 # Mesh definition
 Lx : 0.01
@@ -10,17 +10,21 @@ ny : 100
 nz : 1
 
 # Initial conditions
-ks/ko                : 5
-kc/ks                : 3
-Buffer region length : 0.0025
-Faded region length  : 0.0005
-Initial HMN           :    1.0810837e-02
-Initial XC12H26       :    5.2061660e-02
-Initial N2            :    7.1877706e-01
-Initial O2            :    2.1835044e-01
-
-! Initial temperature  : 750
-Buffer temperature   : 500
+ks/ko                   : 5
+kc/ks                   : 3
+Buffer region length    : 0.0025
+Instance number         : 42
+Velocity fluctuation    : 0.1
+Energetic scale         : 0.003
+Dissipative scale       : 0.0001
+Dissipation             : 1e-3
+Initial HMN             : 1.0810837e-02
+Initial XC12H26         : 5.2061660e-02
+Initial N2              : 7.1877706e-01
+Initial O2              : 2.1835044e-01
+Temperature range       : 300
+Temperature lower bound : 700
+Buffer temperature      : 500
 
 # Neural network data files
 Auto encoder         : auto_encoder.bin
@@ -38,7 +42,5 @@ Pressure tolerance : 1e-10
 Pressure iteration : 50
 
 # Ensight output
-Ensight output period  : 1e-4
+Ensight output period  : 1e-5
 Ensight output species : XC12H26, HMN, OH, O2
-
-Instance number : 42

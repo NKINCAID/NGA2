@@ -170,7 +170,7 @@ contains
 
 
    !> Initialize a double delta field
-   subroutine ignition_doubledelta(Lbu,Lfd)
+   subroutine doubledelta_SCinit(Lbu,Lfd)
       use precision
       use param,    only: param_read
       use random,   only: random_normal,random_uniform
@@ -321,14 +321,14 @@ contains
 
       ! Fade to zero in the buffer region
       call fade_borders(tmp_sc,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
-   end subroutine ignition_doubledelta
+   end subroutine doubledelta_SCinit
 
 
    !> Initialize PP spectrum for velocity
-   subroutine ignition_spectrum(Lbu,Lfd,Ut,le,ld,epsilon)
+   subroutine PP_spectrum(Lbu,Lfd,Ut,le,ld,epsilon)
       use precision
       use param,    only: param_read
-      use random,   only: random_normal, random_uniform
+      use random,   only: random_normal,random_uniform
       use, intrinsic :: iso_c_binding
       implicit none
 
@@ -483,7 +483,7 @@ contains
       ! Fade to zero in the buffer region
       call fade_borders(tmp_U,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
       call fade_borders(tmp_V,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
-   end subroutine ignition_spectrum
+   end subroutine PP_spectrum
 
 
    !> Find the border indices of the initialization region
@@ -791,7 +791,7 @@ contains
          integer :: n,i,j,k,ierr
          type(bcond), pointer :: mybc
          ! Initialize the global scalar field
-         if (sc%cfg%amRoot) call ignition_doubledelta(L_buffer,L_faded)
+         if (sc%cfg%amRoot) call doubledelta_SCinit(L_buffer,L_faded)
          ! Communicate information
          call MPI_BCAST(tmp_sc,sc%cfg%nx*sc%cfg%ny*sc%cfg%nz,MPI_REAL_WP,0,sc%cfg%comm,ierr)
          ! Set the local scalar field
@@ -819,7 +819,7 @@ contains
          call param_read('Dissipative scale',ld)
          call param_read('Dissipation',epsilon)
          ! Initialize the global velocity field
-         if (fs%cfg%amRoot) call ignition_spectrum(L_buffer,L_faded,1.0_WP,le,ld,epsilon)
+         if (fs%cfg%amRoot) call PP_spectrum(L_buffer,L_faded,Ut,le,ld,epsilon)
          ! Communicate information
          call MPI_BCAST(tmp_U,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
          call MPI_BCAST(tmp_V,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
