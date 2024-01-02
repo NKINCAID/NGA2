@@ -5,14 +5,22 @@ Partition : 4 1 1
 Lx : 0.01
 Ly : 0.01
 Lz : 0.0001
-nx : 128
-ny : 128
+nx : 100
+ny : 100
 nz : 1
 
-# Inflow definition
-ks/ko : 3
-kc/ks : 2
+# Initial conditions
+ks/ko                : 5
+kc/ks                : 3
 Buffer region length : 0.0025
+Faded region length  : 0.0005
+!Initial HMN           :    1.0810837e-02
+Initial N2            :    7.1880666e-01
+Initial O2            :    2.1835943e-01
+Initial NXC12H26      :    6.2833903e-02
+
+! Initial temperature  : 750
+Buffer temperature   : 300
 
 Forcing constant     : 1.0
 Velocity fluctuation : 0.1
@@ -33,11 +41,6 @@ Pressure tolerance : 1e-10
 Pressure iteration : 100
 
 # Ensight output
-Ensight output period : 1e-6
+Ensight output period : 1e-5
 
-Stoich moles fuel : 0.05405405405405406
-Fuel : NXC12H26
-Oxidizer : air
-
-T init : 750
-
+Instance number : 42

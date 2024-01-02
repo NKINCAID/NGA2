@@ -661,12 +661,14 @@ contains
       integer :: i, j, k, n
       class(finitechem), intent(inout) :: this
 
+      this%h = 0.0_WP
+
       do k = this%cfg%kmino_, this%cfg%kmaxo_
          do j = this%cfg%jmino_, this%cfg%jmaxo_
             do i = this%cfg%imino_, this%cfg%imaxo_
                call fcmech_thermodata(this%T(i, j, k))
                do n = 1, nspec
-                  this%h(i, j, k) = this%h(i, j, k) + hsp(n)*this%rho(i, j, k)*this%Y(i, j, k, n)
+                  this%h(i, j, k) = this%h(i, j, k) + hsp(n)*this%Y(i, j, k, n)
                end do
             end do
          end do

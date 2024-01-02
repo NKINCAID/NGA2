@@ -31,11 +31,15 @@ module simulation
    !> Simulation monitor file
    type(monitor) :: mfile, cflfile, consfile, fcfile
 
+   character(len=str_medium), dimension(:), allocatable :: spec_name
+
+
    public :: simulation_init, simulation_run, simulation_final
 
    !> Private work arrays
    real(WP), dimension(:, :, :), allocatable :: resU, resV, resW, resRHO
    real(WP), dimension(:, :, :), allocatable :: Ui, Vi, Wi
+   real(WP), dimension(:,:,:),   allocatable :: SC_init               !< Initial condition for scalar field
    real(WP), dimension(:, :, :, :), allocatable :: SR
    real(WP), dimension(:, :, :, :, :), allocatable :: gradU
    real(WP), dimension(:, :, :), allocatable :: tmp_sc
@@ -57,8 +61,6 @@ module simulation
    real(WP) :: dx_eta, ell_Lx, Re_ratio, eps_ratio, tke_ratio, nondtime
 
    real(WP) :: tmp_sc_min, tmp_sc_max
-   integer :: isc_fuel, isc_o2, isc_n2, isc_T
-   integer :: imin, imax, jmin, jmax, kmin, kmax, nx, ny, nz
 
    real(WP) :: t1, t2, t3, t4, t5, t6, t7
 
@@ -145,102 +147,159 @@ contains
    !     if (j .eq. pg%jmax) isIn = .true.
    ! end function yp_scalar
 
-   !> Initialize a double delta field
-   subroutine ignition_doubledelta()
+
+   !> Find the border indices of the initialization region
+   subroutine get_borders(Lbu,imin,imax,jmin,jmax,kmin,kmax)
+      implicit none
+      real(WP),intent(in) :: Lbu
+      integer,intent(out) :: imin,imax,jmin,jmax,kmin,kmax
+      integer :: i,j,k
+
+      ! Find the x bounds
+      imin=cfg%imin
+      do i=cfg%imin,cfg%imax
+         if (cfg%xm(i).gt.cfg%x(cfg%imin)+Lbu) then
+            imin=i
+            exit
+         end if
+      end do
+      imax=cfg%imax
+      do i=cfg%imax,cfg%imin,-1
+         if (cfg%xm(i).lt.cfg%x(cfg%imax+1)-Lbu) then
+            imax=i
+            exit
+         end if
+      end do
+
+      ! Find the y bounds
+      jmin=cfg%jmin
+      do j=cfg%jmin,cfg%jmax
+         if (cfg%ym(j).gt.cfg%y(cfg%jmin)+Lbu) then
+            jmin=j
+            exit
+         end if
+      end do
+      jmax=cfg%jmax
+      do j=cfg%jmax,cfg%jmin,-1
+         if (cfg%ym(j).lt.cfg%y(cfg%jmax+1)-Lbu) then
+            jmax=j
+            exit
+         end if
+      end do
+
+      ! Find the z bounds
+      kmin=cfg%kmin
+      do k=cfg%kmin,cfg%kmax
+         if (cfg%zm(k).gt.cfg%z(cfg%kmin)+Lbu) then
+            kmin=k
+            exit
+         end if
+      end do
+      kmax=cfg%kmax
+      do k=cfg%kmax,cfg%kmin,-1
+         if (cfg%zm(k).lt.cfg%z(cfg%kmax+1)-Lbu) then
+            kmax=k
+            exit
+         end if
+      end do
+   end subroutine get_borders
+
+   !> Initialize a double delta scalar field
+   subroutine doubledelta_SCinit(Lbu,imin,imax,jmin,jmax,kmin,kmax)
       use precision
-      use param, only: param_read
-      use random, only: random_normal, random_uniform
-      use messager, only: die
+      use param,   only: param_read
+      use random,  only: random_normal,random_uniform
       use, intrinsic :: iso_c_binding
       implicit none
-      ! Buffer region lenght
-      ! real(WP), intent(in) :: L_buffer
-      real(WP) :: pi, ke, dk, kc, ks, ksk0ratio, kcksratio, kx, ky, kz, kk, f_phi, kk2
-      ! Complex buffer
-      complex(WP), dimension(:, :, :), pointer :: Cbuf
-      ! Real buffer
-      real(WP), dimension(:, :, :), pointer :: Rbuf
-      ! Scalar buffer
-      real(WP)  :: tmp_mean, tmp_rms
+
+      ! Buffer and faded region lenght
+      real(WP),intent(in) :: Lbu
+      integer, intent(in) :: imin,imax,jmin,jmax,kmin,kmax
+      real(WP) :: pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi,kk2
+      ! Complex and real buffer
+      complex(WP), dimension(:,:,:), pointer :: Cbuf
+      real(WP),    dimension(:,:,:), pointer :: Rbuf
       ! Spectrum computation
-      real(WP) :: alpha, spec_amp, eps, amp_disc, e_total, energy_spec
-      real(WP), dimension(:, :), pointer :: spect
-      complex(WP), dimension(:, :, :), pointer :: ak, bk
+      real(WP) :: spec_amp,eps,amp_disc,energy_spec
+      complex(WP), dimension(:,:,:), pointer :: ak,bk
       ! Other
-      integer     :: i, j, k, ik, iunit, dim, nk
-      complex(WP) :: ii = (0.0_WP, 1.0_WP)
+      integer     :: i,j,k,nk,nx,ny,nz
+      complex(WP) :: ii=(0.0_WP,1.0_WP)
       real(WP)    :: rand
       ! Fourier coefficients
-      integer(KIND=8) :: plan_r2c, plan_c2r
-      complex(WP), dimension(:, :, :), pointer :: Uk, Vk, Wk
+      integer(KIND=8) :: plan_r2c,plan_c2r
 
       include 'fftw3.f03'
 
       ! Create pi
-      pi = acos(-1.0_WP)
+      pi=acos(-1.0_WP)
 
       ! Step size for wave number
-      dk = 2.0_WP*pi/(Lx - 2.0_WP*L_buffer)
+      dk=2.0_WP*pi/(Lx-2.0_WP*Lbu)
 
       ! Number of cells iniside the initialization region
-      nk = nx/2 + 1
+      nx=imax-imin+1
+      ny=jmax-jmin+1
+      nz=kmax-kmin+1
+      nk=nx/2+1
 
       ! Initialize in similar manner to Eswaran and Pope 1988
-      call param_read('ks/ko', ksk0ratio)
-      ks = ksk0ratio*dk
-      call param_read('kc/ks', kcksratio)
-      kc = kcksratio*ks
+      call param_read('ks/ko',ksk0ratio)
+      ks=ksk0ratio*dk
+      call param_read('kc/ks',kcksratio)
+      kc=kcksratio*ks
+
       ! Allocate Cbuf and Rbuf
-      allocate (Cbuf(nk, ny, nz))
-      allocate (Rbuf(nx, ny, nz))
+      allocate(Cbuf(nk,ny,nz))
+      allocate(Rbuf(nx,ny,nz))
 
       ! Compute the Fourier coefficients
-      do k = 1, nz
-         do j = 1, ny
-            do i = 1, nk
+      do k=1,nz
+         do j=1,ny
+            do i=1,nk
                ! Wavenumbers
-               kx = real(i - 1, WP)*dk
-               ky = real(j - 1, WP)*dk
-               if (j .gt. nk) ky = -real(nx + 1 - j, WP)*dk
-               kz = real(k - 1, WP)*dk
-               if (k .gt. nk) kz = -real(nx + 1 - k, WP)*dk
-               kk = sqrt(kx**2 + ky**2 + kz**2)
-               kk2 = sqrt(kx**2 + ky**2)
+               kx=real(i-1,WP)*dk
+               ky=real(j-1,WP)*dk
+               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
+               kz=real(k-1,WP)*dk
+               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
+               kk =sqrt(kx**2+ky**2+kz**2)
+               kk2=sqrt(kx**2+ky**2)
 
                ! Compute the Fourier coefficients
-               if ((ks - dk/2.0_WP .le. kk) .and. (kk .le. ks + dk/2.0_WP)) then
-                  f_phi = 1.0_WP
+               if ((ks-dk/2.0_WP.le.kk).and.(kk.le.ks+dk/2.0_WP)) then
+                  f_phi=1.0_WP
                else
-                  f_phi = 0.0_WP
+                  f_phi=0.0_WP
                end if
                call random_number(rand)
-               if (kk .lt. 1e-10) then
-                  Cbuf(i, j, k) = 0.0_WP
+               if (kk.lt.1e-10) then
+                  Cbuf(i,j,k)=0.0_WP
                else
-                  Cbuf(i, j, k) = sqrt(f_phi/(4.0_WP*pi*kk**2))*exp(ii*2.0_WP*pi*rand)
+                  Cbuf(i,j,k)=sqrt(f_phi/(4.0_WP*pi*kk**2))*exp(ii*2.0_WP*pi*rand)
                end if
             end do
          end do
       end do
 
       ! Oddball and setting up plans based on geometry
-      do j = nk + 1, ny
-         Cbuf(1, j, 1) = conjg(Cbuf(1, ny + 2 - j, 1))
+      do j=nk+1,ny
+         Cbuf(1,j,1)=conjg(Cbuf(1,ny+2-j,1))
       end do
-      call dfftw_plan_dft_c2r_2d(plan_c2r, nx, ny, Cbuf, Rbuf, FFTW_ESTIMATE)
-      call dfftw_plan_dft_r2c_2d(plan_r2c, nx, ny, Rbuf, Cbuf, FFTW_ESTIMATE)
+      call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf,FFTW_ESTIMATE)
+      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf,FFTW_ESTIMATE)
 
       ! Inverse Fourier transform
       call dfftw_execute(plan_c2r)
 
       ! Force 'double-delta' pdf on scalar field
-      do k = 1, nz
-         do j = 1, ny
-            do i = 1, nx
-               if (Rbuf(i, j, k) .le. 0.0_WP) then
-                  Rbuf(i, j, k) = 0.0_WP
+      do k=1,nz
+         do j=1,ny
+            do i=1,nx
+               if (Rbuf(i,j,k).le.0.0_WP) then
+                  Rbuf(i,j,k)=0.0_WP
                else
-                  Rbuf(i, j, k) = 1.0_WP
+                  Rbuf(i,j,k)=1.0_WP
                end if
             end do
          end do
@@ -249,64 +308,57 @@ contains
       ! Fourier Transform and filter to smooth
       call dfftw_execute(plan_r2c)
 
-      do k = 1, nz
-         do j = 1, ny
-            do i = 1, nk
+      do k=1,nz
+         do j=1,ny
+            do i=1,nk
                ! Wavenumbers
-               kx = real(i - 1, WP)*dk
-               ky = real(j - 1, WP)*dk
-               if (j .gt. nk) ky = -real(nx + 1 - j, WP)*dk
-               kz = real(k - 1, WP)*dk
-               if (k .gt. nk) kz = -real(nx + 1 - k, WP)*dk
-               kk = sqrt(kx**2 + ky**2 + kz**2)
-               kk2 = sqrt(kx**2 + ky**2)
+               kx=real(i-1,WP)*dk
+               ky=real(j-1,WP)*dk
+               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
+               kz=real(k-1,WP)*dk
+               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
+               kk =sqrt(kx**2+ky**2+kz**2)
+               kk2=sqrt(kx**2+ky**2)
 
                ! Filter to remove high wavenumber components
-               if (kk .le. kc) then
-                  Cbuf(i, j, k) = Cbuf(i, j, k)*1.0_WP
+               if (kk.le.kc) then
+                  Cbuf(i,j,k)=Cbuf(i,j,k)*1.0_WP
                else
-                  Cbuf(i, j, k) = Cbuf(i, j, k)*(kc/kk)**2
+                  Cbuf(i,j,k)=Cbuf(i,j,k)*(kc/kk)**2
                end if
+
             end do
          end do
       end do
 
       ! Oddball
-      do j = nk + 1, ny
-         Cbuf(1, j, 1) = conjg(Cbuf(1, ny + 2 - j, 1))
+      do j=nk+1,ny
+         Cbuf(1,j,1)=conjg(Cbuf(1,ny+2-j,1))
       end do
 
       ! Fourier Transform back to real
       call dfftw_execute(plan_c2r)
 
       ! Set zero in the buffer region
-      tmp_sc = 0.0_WP
+      SC_init=0.0_WP
       ! Set the internal scalar field
-      tmp_sc(imin:imax, jmin:jmax, kmin:kmax) = Rbuf/real(nx*ny*nz, WP)
-
-      tmp_sc_min = minval(tmp_sc)
-      tmp_sc_max = maxval(tmp_sc)
-
-      do k = kmin, kmax
-         do j = jmin, jmax
-            do i = imin, imax
-               tmp_sc(i, j, 1) = (tmp_sc(i, j, 1) - tmp_sc_min)/(tmp_sc_max - tmp_sc_min)*1.3_WP
-            end do
-         end do
-      end do
+      SC_init(imin:imax,jmin:jmax,kmin:kmax)=Rbuf/real(nx*ny*nz,WP)
 
       ! Destroy the plans
       call dfftw_destroy_plan(plan_c2r)
       call dfftw_destroy_plan(plan_r2c)
 
       ! Clean up
-      deallocate (Cbuf)
-      deallocate (Rbuf)
-   end subroutine ignition_doubledelta
+      deallocate(Cbuf)
+      deallocate(Rbuf)
+
+      ! Fade to zero in the buffer region
+      ! call fade_borders(SC_init,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
+   end subroutine doubledelta_SCinit
 
    !> Initialization of problem solver
    subroutine simulation_init
-      use param, only: param_read
+      use param, only: param_read,param_getsize,param_exists
       implicit none
 
       ! Create a low-Mach flow solver with bconds
@@ -354,7 +406,6 @@ contains
          ! Setup the solver
          call fc%setup(implicit_solver=ss)
 
-         print *, sCO2, fc%SCname(sCO2)
       end block create_fc
 
       ! Allocate work arrays
@@ -368,12 +419,15 @@ contains
          allocate (Vi(fs%cfg%imino_:fs%cfg%imaxo_, fs%cfg%jmino_:fs%cfg%jmaxo_, fs%cfg%kmino_:fs%cfg%kmaxo_))
          allocate (Wi(fs%cfg%imino_:fs%cfg%imaxo_, fs%cfg%jmino_:fs%cfg%jmaxo_, fs%cfg%kmino_:fs%cfg%kmaxo_))
          allocate (SR(1:6, cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
+         allocate(SC_init(fc%cfg%imin:fc%cfg%imax,fc%cfg%jmin:fc%cfg%jmax,fc%cfg%kmin:fc%cfg%kmax))
          allocate (gradU(1:3, 1:3, cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
          ! Scalar solver
          allocate (resSC(fc%cfg%imino_:fc%cfg%imaxo_, fc%cfg%jmino_:fc%cfg%jmaxo_, fc%cfg%kmino_:fc%cfg%kmaxo_, fc%nscalar))
          allocate (SCtmp(fc%cfg%imino_:fc%cfg%imaxo_, fc%cfg%jmino_:fc%cfg%jmaxo_, fc%cfg%kmino_:fc%cfg%kmaxo_, fc%nscalar))
 
          allocate (flag(cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_, fc%nscalar))
+
+         allocate(spec_name(nspec))
 
          ! Temporary scalar field for initialization
          allocate (tmp_sc(fc%cfg%imin:fc%cfg%imax, fc%cfg%jmin:fc%cfg%jmax, fc%cfg%kmin:fc%cfg%kmax))
@@ -399,116 +453,64 @@ contains
          integer :: n, i, j, k, ierr
          character(len=str_medium) :: fuel, oxidizer
          real(WP) :: moles_fuel
-         real(WP) :: T_init
+         real(WP) :: T_init, L_buffer, T_buf
+         integer  :: imin,imax,jmin,jmax,kmin,kmax
+         real(WP) :: tmpY
          type(bcond), pointer :: mybc
 
-         call param_read('Stoich moles fuel', moles_fuel)
-         call param_read('Fuel', fuel)
-         call param_read('Oxidizer', oxidizer)
-         call param_read('T init', T_init)
+
+         ! Get all the species names in the mechanism
+         call fcmech_get_speciesnames(spec_name)
+
+         do i = 1, nspec
+            ! ! Global species index
+            ! ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
+            ! Initial values
+            if (param_exists('Initial '//trim(spec_name(i)))) then
+               call param_read('Initial '//trim(spec_name(i)), tmpY)
+               fc%SC(:,:,:,i) = tmpY
+               if (cfg%amRoot) then
+                  print *, "Initial ", trim(spec_name(i)), tmpY
+               end if
+            end if
+         end do
+         print*,''
 
          call param_read('Pressure', fc%Pthermo)
 
-         ! Read in the buffer region length
-         call param_read('Buffer region length', L_buffer)
+         call param_read('Buffer region length',L_buffer)
+         call param_read('Buffer temperature',T_buf)
 
-         ! Find the x bounds of the region to be initialized
-         imin = fc%cfg%imin
-         do i = fc%cfg%imin, fc%cfg%imax
-            if (fc%cfg%xm(i) .gt. fc%cfg%x(fc%cfg%imin) + L_buffer) then
-               imin = i
-               exit
-            end if
-         end do
-         imax = fc%cfg%imax
-         do i = fc%cfg%imax, fc%cfg%imin, -1
-            if (fc%cfg%xm(i) .lt. fc%cfg%x(fc%cfg%imax + 1) - L_buffer) then
-               imax = i
-               exit
-            end if
-         end do
-
-         ! Find the y bounds of the region to be initialized
-         jmin = fc%cfg%jmin
-         do j = fc%cfg%jmin, fc%cfg%jmax
-            if (fc%cfg%ym(j) .gt. fc%cfg%y(fc%cfg%jmin) + L_buffer) then
-               jmin = j
-               exit
-            end if
-         end do
-         jmax = fc%cfg%jmax
-         do j = fc%cfg%jmax, fc%cfg%jmin, -1
-            if (fc%cfg%ym(j) .lt. fc%cfg%y(fc%cfg%jmax + 1) - L_buffer) then
-               jmax = j
-               exit
-            end if
-         end do
-
-         ! Find the z bounds of the region to be initialized
-         kmin = fc%cfg%kmin
-         do k = fc%cfg%kmin, fc%cfg%kmax
-            if (fc%cfg%zm(k) .gt. fc%cfg%z(fc%cfg%kmin) + L_buffer) then
-               kmin = k
-               exit
-            end if
-         end do
-         kmax = fc%cfg%kmax
-         do k = fc%cfg%kmax, fc%cfg%kmin, -1
-            if (fc%cfg%zm(k) .lt. fc%cfg%z(fc%cfg%kmax + 1) - L_buffer) then
-               kmax = k
-               exit
-            end if
-         end do
-         nx = imax - imin + 1
-         ny = jmax - jmin + 1
-         nz = kmax - kmin + 1
+         call get_borders(L_buffer,imin,imax,jmin,jmax,kmin,kmax)
 
          ! Initialize the global scalar field
-         if (fc%cfg%amRoot) call ignition_doubledelta()
+         if (fc%cfg%amRoot) call doubledelta_SCinit(L_buffer,imin,imax,jmin,jmax,kmin,kmax)
 
          ! Communicate information
-         call MPI_BCAST(tmp_sc, fc%cfg%nx*fc%cfg%ny*fc%cfg%nz, MPI_REAL_WP, 0, fc%cfg%comm, ierr)
+         call MPI_BCAST(SC_init, fc%cfg%nx*fc%cfg%ny*fc%cfg%nz, MPI_REAL_WP, 0, fc%cfg%comm, ierr)
 
-         do i = 1, nspec
-            if (fc%SCname(i) .eq. fuel) then
-               isc_fuel = i
-               print *, "Fuel: ", trim(fc%SCname(i)), isc_fuel
-            elseif (fc%SCname(i) .eq. 'O2') then
-               isc_o2 = i
-            elseif (fc%SCname(i) .eq. 'N2') then
-               isc_n2 = i
-            end if
-         end do
+         tmp_sc_min = minval(SC_init)
+         tmp_sc_max = maxval(SC_init)
+         
+         if (cfg%amRoot) then
+            print *, tmp_sc_min, tmp_sc_max, SC_init(50,50, 1)
+         end if
 
-         isc_T = nspec + 1
-         ! tmp_sc = 1.0_WP
-         do k = fc%cfg%kmino_, fc%cfg%kmaxo_
-            do j = fc%cfg%jmino_, fc%cfg%jmaxo_
-               do i = fc%cfg%imino_, fc%cfg%imaxo_
-                  if (i .ge. imin .and. i .le. imax .and. j .ge. jmin .and. j .le. jmax .and. k .ge. kmin .and. k .le. kmax) then
-                     fc%SC(i, j, k, isc_T) = T_init
+         ! Set initial conditions
+         do k=fc%cfg%kmin_,fc%cfg%kmax_
+            do j=fc%cfg%jmin_,fc%cfg%jmax_
+               do i=fc%cfg%imin_,fc%cfg%imax_
 
-                     ! Set mass fraction of fuel
-                     fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
-                                                (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                 (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                     ! Set mass fraction of O2
-                     fc%SC(i, j, k, isc_o2) = W_sp(isc_o2)/ &
-                                              (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                               (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                     ! Set mass fraction of N2
-                     fc%SC(i, j, k, isc_n2) = 3.76_WP*W_sp(isc_n2)/ &
-                                              (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                               (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-
+                  if ((i.ge.imin).and.(i.le.imax).and.(j.ge.jmin).and.(j.le.jmax).and.(k.ge.kmin).and.(k.le.kmax)) then
+                     fc%SC(i,j,k, nspec+1)=(SC_init(i,j,k) - tmp_sc_min) / (tmp_sc_max - tmp_sc_min) * 300.0_WP + 700.0_WP
                   else
-                     fc%SC(i, j, k, isc_n2) = 1.0_WP
-                     fc%SC(i, j, k, isc_T) = 300.0_WP
-
+                     fc%SC(i,j,k, nspec+1)=T_buf
                   end if
+
                end do
             end do
          end do
+
          call fc%get_density()
          call fc%get_viscosity()
          call fc%get_diffusivity()
@@ -555,21 +557,21 @@ contains
          call ens_out%add_scalar('divergence', fs%div)
          call ens_out%add_scalar('density', fc%rho)
          call ens_out%add_scalar('viscosity', fc%visc)
-         call ens_out%add_scalar('thermal_diff', fc%diff(:, :, :, isc_T))
+         call ens_out%add_scalar('thermal_diff', fc%diff(:, :, :, nspec+1))
 
-         call ens_out%add_scalar('YNC12H26', fc%SC(:, :, :, isc_fuel))
+         call ens_out%add_scalar('YNC12H26', fc%SC(:, :, :, sNXC12H26))
          call ens_out%add_scalar('YOH', fc%SC(:, :, :, 5))
-         call ens_out%add_scalar('YO2', fc%SC(:, :, :, isc_o2))
-         call ens_out%add_scalar('YN2', fc%SC(:, :, :, isc_n2))
-         call ens_out%add_scalar('T', fc%SC(:, :, :, isc_T))
+         call ens_out%add_scalar('YO2', fc%SC(:, :, :, sO2))
+         call ens_out%add_scalar('YN2', fc%SC(:, :, :, sN2))
+         call ens_out%add_scalar('T', fc%SC(:, :, :, nspec+1))
          call ens_out%add_scalar('YHO2', fc%SC(:, :, :, sHO2))
          call ens_out%add_scalar('YSXC12H25', fc%SC(:, :, :, sSXC12H25))
 
-         call ens_out%add_scalar('SRC_YNC12H26', fc%SRCchem(:, :, :, isc_fuel))
-         call ens_out%add_scalar('SRC_YO2', fc%SRCchem(:, :, :, isc_o2))
+         call ens_out%add_scalar('SRC_YNC12H26', fc%SRCchem(:, :, :, sNXC12H26))
+         call ens_out%add_scalar('SRC_YO2', fc%SRCchem(:, :, :, sO2))
          call ens_out%add_scalar('SRC_YHO2', fc%SRCchem(:, :, :, sHO2))
          call ens_out%add_scalar('SRC_YSXC12H25', fc%SRCchem(:, :, :, sSXC12H25))
-         call ens_out%add_scalar('SRC_T', fc%SRCchem(:, :, :, isc_T))
+         call ens_out%add_scalar('SRC_T', fc%SRCchem(:, :, :, nspec+1))
 
          ! Output to ensight
          if (ens_evt%occurs()) call ens_out%write_data(time%t)
