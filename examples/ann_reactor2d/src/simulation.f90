@@ -14,6 +14,9 @@ module simulation
    use ensight_class,       only: ensight
    use event_class,         only: event
    use monitor_class,       only: monitor
+   use fcmech
+   ! use fcmech
+
    implicit none
    private
 
@@ -21,7 +24,7 @@ module simulation
    type(hypre_str),     public :: ps
    type(ddadi),         public :: vs,ss
    type(lowmach),       public :: fs
-   type(multivdscalar), public :: sc
+   type(multivdscalar), public :: scs
    type(timetracker),   public :: time
 
    !> Artificial neural networks
@@ -158,7 +161,7 @@ contains
 
 
    !> Initialize a double delta scalar field
-   subroutine doubledelta_SCinit(Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
+   subroutine doubledelta_SCinit(Lbu,imin,imax,jmin,jmax,kmin,kmax)
       use precision
       use param,   only: param_read
       use random,  only: random_normal,random_uniform
@@ -166,7 +169,7 @@ contains
       implicit none
 
       ! Buffer and faded region lenght
-      real(WP),intent(in) :: Lbu,Lfd
+      real(WP),intent(in) :: Lbu
       integer, intent(in) :: imin,imax,jmin,jmax,kmin,kmax
       real(WP) :: pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi,kk2
       ! Complex and real buffer
@@ -306,7 +309,7 @@ contains
       deallocate(Rbuf)
 
       ! Fade to zero in the buffer region
-      call fade_borders(SC_init,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
+      ! call fade_borders(SC_init,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
    end subroutine doubledelta_SCinit
 
 
@@ -523,113 +526,6 @@ contains
    end subroutine get_borders
 
 
-   !> Fade borders of the initialized region for smooth transition to ambient
-   subroutine fade_borders(field,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
-      implicit none
-      real(WP),intent(inout) :: field(cfg%imin:cfg%imax,cfg%jmin:cfg%jmax,cfg%kmin:cfg%kmax)
-      real(WP),intent(in)    :: Lbu,Lfd
-      integer,intent(in)     :: imin,imax,jmin,jmax,kmin,kmax
-      integer  :: i,j,k
-      real(WP) :: dx, dy
-
-      ! Check the lengths
-      if ((Lbu.gt.0.0_WP).and.(Lfd.gt.0.0_WP)) then
-
-         ! Left side
-         do i=cfg%imin,imin-1
-            dx=abs(cfg%xm(i)-cfg%xm(imin))
-            if (dx.le.Lfd) then
-               do j=jmin,jmax
-                  field(i,j,kmin:kmax)=field(imin,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)
-               end do
-            end if
-         end do
-
-         ! Right side
-         do i=imax+1,cfg%imax
-            dx=abs(cfg%xm(i)-cfg%xm(imax))
-            if (dx.le.Lfd) then
-               do j=jmin,jmax
-                  field(i,j,kmin:kmax)=field(imax,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)
-               end do
-            end if
-         end do
-
-         ! Bottom side
-         do j=cfg%jmin,jmin-1
-            dy=abs(cfg%ym(j)-cfg%ym(jmin))
-            if (dy.le.Lfd) then
-               do i=imin,imax
-                  field(i,j,kmin:kmax)=field(i,jmin,kmin:kmax)*exp(-(dy/(dy-Lfd))**2)
-               end do
-            end if
-         end do
-
-         ! Top side
-         do j=jmax+1,cfg%jmax
-            dy=abs(cfg%ym(j)-cfg%ym(jmax))
-            if (dy.le.Lfd) then
-               do i=imin,imax
-                  field(i,j,kmin:kmax)=field(i,jmax,kmin:kmax)*exp(-(dy/(dy-Lfd))**2)
-               end do
-            end if
-         end do
-
-         ! Left bottom corner
-         do j=cfg%jmin,jmin-1
-            dy=abs(cfg%ym(j)-cfg%ym(jmin))
-            if (dy.le.Lfd) then
-               do i=cfg%imin,imin-1
-                  dx=abs(cfg%xm(i)-cfg%xm(imin))
-                  if (dx.le.Lfd) then
-                     field(i,j,kmin:kmax)=(dy*field(imin,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)+dx*field(i,jmin,kmin:kmax)*exp(-(dy/(dy-Lfd))**2))/(dx+dy)
-                  end if
-               end do
-            end if
-         end do
-
-         ! Left top corner
-         do j=jmax+1,cfg%jmax
-            dy=abs(cfg%ym(j)-cfg%ym(jmax))
-            if (dy.le.Lfd) then
-               do i=cfg%imin,imin-1
-                  dx=abs(cfg%xm(i)-cfg%xm(imin))
-                  if (dx.le.Lfd) then
-                     field(i,j,kmin:kmax)=(dy*field(imin,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)+dx*field(i,jmax,kmin:kmax)*exp(-(dy/(dy-Lfd))**2))/(dx+dy)
-                  end if
-               end do
-            end if
-         end do
-
-         ! Right top corner
-         do j=jmax+1,cfg%jmax
-            dy=abs(cfg%ym(j)-cfg%ym(jmax))
-            if (dy.le.Lfd) then
-               do i=imax+1,cfg%imax
-                  dx=abs(cfg%xm(i)-cfg%xm(imax))
-                  if (dx.le.Lfd) then
-                     field(i,j,kmin:kmax)=(dy*field(imax,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)+dx*field(i,jmax,kmin:kmax)*exp(-(dy/(dy-Lfd))**2))/(dx+dy)
-                  end if
-               end do
-            end if
-         end do
-
-         ! Right bottom corner
-         do j=cfg%jmin,jmin-1
-            dy=abs(cfg%ym(j)-cfg%ym(jmin))
-            if (dy.le.Lfd) then
-               do i=imax+1,cfg%imax
-                  dx=abs(cfg%xm(i)-cfg%xm(imax))
-                  if (dx.le.Lfd) then
-                     field(i,j,kmin:kmax)=(dy*field(imax,j,kmin:kmax)*exp(-(dx/(dx-Lfd))**2)+dx*field(i,jmin,kmin:kmax)*exp(-(dy/(dy-Lfd))**2))/(dx+dy)
-                  end if
-               end do
-            end if
-         end do
-
-      end if
-   end subroutine fade_borders
-
 
    !> Initialization of problem solver
    subroutine simulation_init
@@ -692,22 +588,21 @@ contains
       create_scalar_solver: block
          use multivdscalar_class, only: dirichlet,neumann,quick,bquick
          ! Create scalar solver
-         sc=multivdscalar(cfg=cfg,scheme=bquick,nscalar=aen%nvar,name='Variable density multi scalar')
+         scs=multivdscalar(cfg=cfg,scheme=bquick,nscalar=aen%nvar,name='Variable density multi scalar')
          ! Boundary conditions
-         call sc%add_bcond(name='ym_outflow',type=neumann,locator=ym_locator_sc,dir='-y')
-         call sc%add_bcond(name='yp_outflow',type=neumann,locator=yp_locator_sc,dir='+y')
-         call sc%add_bcond(name='xm_outflow',type=neumann,locator=xm_locator_sc,dir='-x')
-         call sc%add_bcond(name='xp_outflow',type=neumann,locator=xp_locator_sc,dir='+x')
+         call scs%add_bcond(name='ym_outflow',type=neumann,locator=ym_locator_sc,dir='-y')
+         call scs%add_bcond(name='yp_outflow',type=neumann,locator=yp_locator_sc,dir='+y')
+         call scs%add_bcond(name='xm_outflow',type=neumann,locator=xm_locator_sc,dir='-x')
+         call scs%add_bcond(name='xp_outflow',type=neumann,locator=xp_locator_sc,dir='+x')
          ! Configure implicit scalar solver
          ss=ddadi(cfg=cfg,name='Scalar',nst=13)
          ! Setup the solver
-         call sc%setup(implicit_solver=ss)
+         call scs%setup(implicit_solver=ss)
       end block create_scalar_solver
 
 
       ! Allocate work arrays
       allocate_work_arrays: block
-         use fcmech, only: nspec
          ! Flow solver
          allocate(resU  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
          allocate(resV  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
@@ -717,21 +612,22 @@ contains
          allocate(Vi    (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
          allocate(Wi    (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
          ! Scalar solver
-         allocate(resSC  (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,sc%nscalar))
-         allocate(SCtmp  (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,sc%nscalar))
-         allocate(bqflag (cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_,sc%nscalar))
-         allocate(SC_src (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,aen%nvar)); SC_src=0.0_WP
-         allocate(SC_init(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
+         allocate(resSC  (scs%cfg%imino_:scs%cfg%imaxo_,scs%cfg%jmino_:scs%cfg%jmaxo_,scs%cfg%kmino_:scs%cfg%kmaxo_,scs%nscalar))
+         allocate(SCtmp  (scs%cfg%imino_:scs%cfg%imaxo_,scs%cfg%jmino_:scs%cfg%jmaxo_,scs%cfg%kmino_:scs%cfg%kmaxo_,scs%nscalar))
+         allocate(bqflag (cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_,scs%nscalar))
+         allocate(SC_src (scs%cfg%imino_:scs%cfg%imaxo_,scs%cfg%jmino_:scs%cfg%jmaxo_,scs%cfg%kmino_:scs%cfg%kmaxo_,aen%nvar)); SC_src=0.0_WP
+         allocate(SC_init(scs%cfg%imin:scs%cfg%imax,scs%cfg%jmin:scs%cfg%jmax,scs%cfg%kmin:scs%cfg%kmax))
          ! Combustion
-         allocate(T(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
-         allocate(Y(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,n_Y))
+         allocate(T(scs%cfg%imino_:scs%cfg%imaxo_,scs%cfg%jmino_:scs%cfg%jmaxo_,scs%cfg%kmino_:scs%cfg%kmaxo_))
+         allocate(Y(scs%cfg%imino_:scs%cfg%imaxo_,scs%cfg%jmino_:scs%cfg%jmaxo_,scs%cfg%kmino_:scs%cfg%kmaxo_,n_Y))
          allocate(Y_sub(nY_sub))  ; Y_sub=0.0_WP
          allocate(hY(nY_sub+1))   ; hY   =0.0_WP
          allocate(TYS(2*nY_sub+1)); TYS  =0.0_WP
          allocate(spec_name(nspec))
          allocate(Y_name(n_Y))
          allocate(iY_in_sub(n_Y)); iY_in_sub=0
-         allocate(Y_init(nY_sub)); Y_init=0.0_WP
+         allocate(Y_init(nspec)); Y_init=0.0_WP
+
       end block allocate_work_arrays
 
 
@@ -750,7 +646,7 @@ contains
       initialize_species: block
          use string, only: str_long
          use, intrinsic :: iso_fortran_env, only: output_unit
-         integer  :: iY_sub,ispec
+         integer  :: iY_sub,ispec, i
          character(len=str_long) :: errmsg
 
          ! Get all the species names in the mechanism
@@ -778,15 +674,25 @@ contains
          end if
 
          ! Process the species indices and set initial mass fractions
-         do iY_sub=1,nY_sub
-            ! Global species index
-            ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
+         do i = 1, nspec
+            ! ! Global species index
+            ! ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
             ! Initial values
-            if (param_exists('Initial '//trim(spec_name(ispec)))) then
-               call param_read('Initial '//trim(spec_name(ispec)),Y_init(iY_sub))
+            if (param_exists('Initial '//trim(spec_name(i)))) then
+               call param_read('Initial '//trim(spec_name(i)), Y_init(i))
             end if
          end do
          print*,''
+
+         ! Process the species indices and set initial mass fractions
+         do iY_sub = 1, nY_sub
+            ! Global species index
+            ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
+            Y_sub(iY_sub) = Y_init(ispec)
+            if (cfg%amRoot) then
+               print *, "Initial ", trim(spec_name(ispec)), Y_sub(iY_sub)
+            end if
+         end do
 
          ! Localize post processed species inside the ann species sub-array
          do iY=1,n_Y
@@ -815,55 +721,63 @@ contains
       initialize_scalar: block
          use messager, only: die
          use parallel, only: MPI_REAL_WP
-         integer  :: i,j,k,ierr
+         integer  :: i,j,k,ierr, n
          integer  :: imin,imax,jmin,jmax,kmin,kmax
          real(WP) :: L_buffer,L_faded
          real(WP) :: T_init,h_init,T_buf
+         real(WP) :: tmp_sc_min, tmp_sc_max
 
          ! Read-in inputs
-         call param_read('Initial temperature' ,T_init) ! Should we directly set T or compute it using ann? I think both should be the same given we correctly set h_init
-         call param_read('Initial enthalpy'    ,h_init)
-         call param_read('Buffer temperature'  ,T_buf)
          call param_read('Buffer region length',L_buffer)
-         call param_read('Faded region length' ,L_faded)
+         call param_read('Buffer temperature',T_buf)
+
 
          ! Find bounds of the region to be initialized
          call get_borders(L_buffer,imin,imax,jmin,jmax,kmin,kmax)
          ! Initialize the global double delta scalar field
-         if (sc%cfg%amRoot) call doubledelta_SCinit(L_buffer,L_faded,imin,imax,jmin,jmax,kmin,kmax)
+         if (scs%cfg%amRoot) call doubledelta_SCinit(L_buffer,imin,imax,jmin,jmax,kmin,kmax)
          ! Communicate information
-         call MPI_BCAST(SC_init,sc%cfg%nx*sc%cfg%ny*sc%cfg%nz,MPI_REAL_WP,0,sc%cfg%comm,ierr)
+         call MPI_BCAST(SC_init,scs%cfg%nx*scs%cfg%ny*scs%cfg%nz,MPI_REAL_WP,0,scs%cfg%comm,ierr)
+
+         tmp_sc_min = minval(SC_init)
+         tmp_sc_max = maxval(SC_init)
 
          ! Set initial conditions
-         do k=sc%cfg%kmin_,sc%cfg%kmax_
-            do j=sc%cfg%jmin_,sc%cfg%jmax_
-               do i=sc%cfg%imin_,sc%cfg%imax_
+         do k=scs%cfg%kmin_,scs%cfg%kmax_
+            do j=scs%cfg%jmin_,scs%cfg%jmax_
+               do i=scs%cfg%imin_,scs%cfg%imax_
 
                   ! Initialize thrmochemical variables
-                  h_init=SC_init(i,j,k)*h_init ! I'm not sure if this good for enthalpy + What value should buffer zone have?
-                  Y_sub =SC_init(i,j,k)*Y_init
+                  h_init=h_init ! I'm not sure if this good for enthalpy + What value should buffer zone have?
                   ! The following if statement would spoil the fading for T
                   if ((i.ge.imin).and.(i.le.imax).and.(j.ge.jmin).and.(j.le.jmax).and.(k.ge.kmin).and.(k.le.kmax)) then
-                     T(i,j,k)=T_init
+                     T(i,j,k)=(SC_init(i,j,k) - tmp_sc_min) / (tmp_sc_max - tmp_sc_min) * 300.0_WP + 700.0_WP
                   else
                      T(i,j,k)=T_buf
                   end if
 
+                  call fcmech_thermodata(T(i, j, k))
+
+                  h_init = 0.0_WP
+                  do n = 1, nspec
+                     h_init= h_init + hsp(n)* Y_init(n)
+                  end do
+                  
                   ! Map Y and h to the neural network scalars
                   call aen%transform_inputs([h_init,Y_sub],hY)
-                  call aen%encode(hY,sc%SC(i,j,k,:))
+                  call aen%encode(hY,scs%SC(i,j,k,:))
 
                   ! Get transport properties
-                  call trn%get_transport(sc%SC(i,j,k,:),trnprop_tmp)
+                  call trn%get_transport(scs%SC(i,j,k,:),trnprop_tmp)
                   call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
                   ! T(i,j,k)        =trnprop(1) ! Should we directly set T or compute it using ann? I think both should be the same given we correctly set h_init
-                  sc%rho(i,j,k)   =trnprop(2)
+                  scs%rho(i,j,k)   =trnprop(2)
                   fs%visc(i,j,k)  =trnprop(3)
-                  sc%diff(i,j,k,:)=trnprop(4)
-                  sc%rho(i,j,k)   =exp(sc%rho(i,j,k))
+                  scs%diff(i,j,k,:)=trnprop(4)
+                  scs%rho(i,j,k)   =exp(scs%rho(i,j,k))
 
                   ! Map the neural network scalars to Y (for visualization purposes at t=0)
-                  call aen%decode(sc%SC(i,j,k,:),TYS)
+                  call aen%decode(scs%SC(i,j,k,:),TYS)
                   call aen%inverse_transform_outputs(TYS,hY,nY_sub+1)
                   do iY=1,n_Y
                      Y(i,j,k,iY)=hY(iY_in_sub(iY)+1)
@@ -874,20 +788,21 @@ contains
          end do
 
          ! Sync fields
-         call sc%cfg%sync(T)
-         call sc%cfg%sync(sc%rho)
-         call sc%cfg%sync(fs%visc)
-         do isc=1,sc%nscalar
-            call sc%cfg%sync(sc%SC  (:,:,:,isc))
-            call sc%cfg%sync(sc%diff(:,:,:,isc))
+         call scs%cfg%sync(T)
+         call scs%cfg%sync(scs%rho)
+         call scs%cfg%sync(fs%visc)
+         do isc=1,scs%nscalar
+            call scs%cfg%sync(scs%SC  (:,:,:,isc))
+            call scs%cfg%sync(scs%diff(:,:,:,isc))
          end do
          do iY=1,n_Y
-            call sc%cfg%sync(Y(:,:,:,iY))
+            call scs%cfg%sync(Y(:,:,:,iY))
          end do
 
          ! Release unused memory
          deallocate(SC_init)
          deallocate(Y_init)
+
       end block initialize_scalar
 
 
@@ -901,7 +816,7 @@ contains
          ! Zero initial field
          fs%U=0.0_WP; fs%V=0.0_WP; fs%W=0.0_WP
          ! Set density from scalar
-         fs%rho=sc%rho
+         fs%rho=scs%rho
          ! Form momentum
          call fs%rho_multiply()
          ! Apply all other boundary conditions
@@ -925,7 +840,7 @@ contains
          call ens_out%add_scalar('pressure'   ,fs%P)
          call ens_out%add_vector('velocity'   ,Ui,Vi,Wi)
          call ens_out%add_scalar('divergence' ,fs%div)
-         call ens_out%add_scalar('density'    ,sc%rho)
+         call ens_out%add_scalar('density'    ,scs%rho)
          call ens_out%add_scalar('viscosity'  ,fs%visc)
          call ens_out%add_scalar('temperature',T)
          do iY=1,n_Y
@@ -941,8 +856,8 @@ contains
          ! Prepare some info about fields
          call fs%get_cfl(time%dt,time%cfl)
          call fs%get_max()
-         call sc%get_max()
-         call sc%get_int()
+         call scs%get_max()
+         call scs%get_int()
          ! Create simulation monitor
          mfile=monitor(fs%cfg%amRoot,'simulation')
          call mfile%add_column(time%n,'Timestep number')
@@ -953,8 +868,8 @@ contains
          call mfile%add_column(fs%Vmax,'Vmax')
          call mfile%add_column(fs%Wmax,'Wmax')
          call mfile%add_column(fs%Pmax,'Pmax')
-         call mfile%add_column(sc%rhomax,'RHOmax')
-         call mfile%add_column(sc%rhomin,'RHOmin')
+         call mfile%add_column(scs%rhomax,'RHOmax')
+         call mfile%add_column(scs%rhomin,'RHOmin')
          call mfile%add_column(fs%divmax,'Maximum divergence')
          call mfile%add_column(fs%psolv%it,'Pressure iteration')
          call mfile%add_column(fs%psolv%rerr,'Pressure error')
@@ -974,9 +889,9 @@ contains
          ! consfile=monitor(fs%cfg%amRoot,'conservation')
          ! call consfile%add_column(time%n,'Timestep number')
          ! call consfile%add_column(time%t,'Time')
-         ! call consfile%add_column(sc%SCint,'SC integral')
-         ! call consfile%add_column(sc%rhoint,'RHO integral')
-         ! call consfile%add_column(sc%rhoSCint,'rhoSC integral')
+         ! call consfile%add_column(scs%SCint,'SC integral')
+         ! call consfile%add_column(scs%rhoint,'RHO integral')
+         ! call consfile%add_column(scs%rhoSCint,'rhoSC integral')
          ! call consfile%write()
       end block create_monitor
 
@@ -998,8 +913,8 @@ contains
          call time%increment()
 
          ! Remember old scalar
-         sc%rhoold=sc%rho
-         sc%SCold =sc%SC
+         scs%rhoold=scs%rho
+         scs%SCold =scs%SC
 
          ! Remember old velocity and momentum
          fs%rhoold=fs%rho
@@ -1008,10 +923,10 @@ contains
          fs%Wold=fs%W; fs%rhoWold=fs%rhoW
 
          ! Get the RHS from chsourcenet
-         do k=sc%cfg%kmino_,sc%cfg%kmaxo_
-            do j=sc%cfg%jmino_,sc%cfg%jmaxo_
-               do i=sc%cfg%imino_,sc%cfg%imaxo_
-                  call csn%get_src(sc%SC(i,j,k,:),SC_src(i,j,k,:))
+         do k=scs%cfg%kmino_,scs%cfg%kmaxo_
+            do j=scs%cfg%jmino_,scs%cfg%jmaxo_
+               do i=scs%cfg%imino_,scs%cfg%imaxo_
+                  call csn%get_src(scs%SC(i,j,k,:),SC_src(i,j,k,:))
                end do
             end do
          end do
@@ -1022,25 +937,25 @@ contains
             ! ============= SCALAR SOLVER ============= !
             
             ! Reset metric for bquick
-            call sc%metric_reset()
+            call scs%metric_reset()
 
             ! Build mid-time scalar
-            sc%SC=0.5_WP*(sc%SC+sc%SCold)
+            scs%SC=0.5_WP*(scs%SC+scs%SCold)
 
             ! Explicit calculation of drhoSC/dt from scalar equation
-            call sc%get_drhoSCdt(resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            call scs%get_drhoSCdt(resSC,fs%rhoU,fs%rhoV,fs%rhoW)
 
             ! Assemble explicit residual
-            do isc=1,sc%nscalar
-               resSC(:,:,:,isc)=time%dt*resSC(:,:,:,isc)-2.0_WP*sc%rho*sc%SC(:,:,:,isc)+(sc%rho+sc%rhoold)*sc%SCold(:,:,:,isc)+time%dt*sc%rho*SC_src(:,:,:,isc)
-               SCtmp(:,:,:,isc)=2.0_WP*sc%SC(:,:,:,isc)-sc%SCold(:,:,:,isc)+resSC(:,:,:,isc)/sc%rho
+            do isc=1,scs%nscalar
+               resSC(:,:,:,isc)=time%dt*resSC(:,:,:,isc)-2.0_WP*scs%rho*scs%SC(:,:,:,isc)+(scs%rho+scs%rhoold)*scs%SCold(:,:,:,isc)+time%dt*scs%rho*SC_src(:,:,:,isc)
+               SCtmp(:,:,:,isc)=2.0_WP*scs%SC(:,:,:,isc)-scs%SCold(:,:,:,isc)+resSC(:,:,:,isc)/scs%rho
             end do
 
             ! Apply it to get explicit scalar prediction
-            do isc=1,sc%nscalar
-               do k=sc%cfg%kmino_,sc%cfg%kmaxo_
-                  do j=sc%cfg%jmino_,sc%cfg%jmaxo_
-                     do i=sc%cfg%imino_,sc%cfg%imaxo_
+            do isc=1,scs%nscalar
+               do k=scs%cfg%kmino_,scs%cfg%kmaxo_
+                  do j=scs%cfg%jmino_,scs%cfg%jmaxo_
+                     do i=scs%cfg%imino_,scs%cfg%imaxo_
                         if ((SCtmp(i,j,k,isc).le.0.0_WP).or.(SCtmp(i,j,k,isc).ge.1.0_WP)) then
                            bqflag(i,j,k,isc)=.true.
                         else
@@ -1052,40 +967,40 @@ contains
             end do
 
             ! Adjust metrics
-            call sc%metric_adjust(SCtmp,bqflag)
+            call scs%metric_adjust(SCtmp,bqflag)
 
             ! Recompute drhoSC/dt
-            call sc%get_drhoSCdt(resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            call scs%get_drhoSCdt(resSC,fs%rhoU,fs%rhoV,fs%rhoW)
 
             ! Assemble explicit residual
-            do isc=1,sc%nscalar
-               resSC(:,:,:,isc)=time%dt*resSC(:,:,:,isc)-2.0_WP*sc%rho*sc%SC(:,:,:,isc)+(sc%rho+sc%rhoold)*sc%SCold(:,:,:,isc)+time%dt*sc%rho*SC_src(:,:,:,isc)
+            do isc=1,scs%nscalar
+               resSC(:,:,:,isc)=time%dt*resSC(:,:,:,isc)-2.0_WP*scs%rho*scs%SC(:,:,:,isc)+(scs%rho+scs%rhoold)*scs%SCold(:,:,:,isc)+time%dt*scs%rho*SC_src(:,:,:,isc)
             end do
 
             ! Form implicit residual
-            call sc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            call scs%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
 
             ! Apply these residuals
-            sc%SC=2.0_WP*sc%SC-sc%SCold+resSC
+            scs%SC=2.0_WP*scs%SC-scs%SCold+resSC
 
             ! Apply boundary conditions on the resulting field
-            call sc%apply_bcond(time%t,time%dt)
+            call scs%apply_bcond(time%t,time%dt)
 
             ! =============================================
 
             ! ============ UPDATE PROPERTIES ====================
 
             ! Get transport properties
-            do k=sc%cfg%kmino_,sc%cfg%kmaxo_
-               do j=sc%cfg%jmino_,sc%cfg%jmaxo_
-                  do i=sc%cfg%imino_,sc%cfg%imaxo_
-                     call trn%get_transport(sc%SC(i,j,k,:),trnprop_tmp)
+            do k=scs%cfg%kmino_,scs%cfg%kmaxo_
+               do j=scs%cfg%jmino_,scs%cfg%jmaxo_
+                  do i=scs%cfg%imino_,scs%cfg%imaxo_
+                     call trn%get_transport(scs%SC(i,j,k,:),trnprop_tmp)
                      call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
                      T(i,j,k)        =trnprop(1)
-                     sc%rho(i,j,k)   =trnprop(2)
+                     scs%rho(i,j,k)   =trnprop(2)
                      fs%visc(i,j,k)  =trnprop(3)
-                     sc%diff(i,j,k,:)=trnprop(4)
-                     sc%rho(i,j,k)   =exp(sc%rho(i,j,k))
+                     scs%diff(i,j,k,:)=trnprop(4)
+                     scs%rho(i,j,k)   =exp(scs%rho(i,j,k))
                   end do
                end do
             end do
@@ -1095,7 +1010,7 @@ contains
             ! ============ VELOCITY SOLVER ======================
 
             ! Build n+1 density
-            fs%rho=0.5_WP*(sc%rho+sc%rhoold)
+            fs%rho=0.5_WP*(scs%rho+scs%rhoold)
 
             ! Build mid-time velocity and momentum
             fs%U=0.5_WP*(fs%U+fs%Uold); fs%rhoU=0.5_WP*(fs%rhoU+fs%rhoUold)
@@ -1123,7 +1038,7 @@ contains
             call fs%rho_multiply()
 
             ! Solve Poisson equation
-            call sc%get_drhodt(dt=time%dt, drhodt=resRHO)
+            call scs%get_drhodt(dt=time%dt, drhodt=resRHO)
             call fs%correct_mfr(drhodt=resRHO)
             call fs%get_div(drhodt=resRHO)
             fs%psolv%rhs=-fs%cfg%vol*fs%div/time%dtmid
@@ -1148,14 +1063,14 @@ contains
 
          ! Recompute interpolated velocity and divergence
          call fs%interp_vel(Ui,Vi,Wi)
-         call sc%get_drhodt(dt=time%dt, drhodt=resRHO)
+         call scs%get_drhodt(dt=time%dt, drhodt=resRHO)
          call fs%get_div(drhodt=resRHO)
 
          ! Map the neural network scalars to T and Y
-         do k=sc%cfg%kmino_,sc%cfg%kmaxo_
-            do j=sc%cfg%jmino_,sc%cfg%jmaxo_
-               do i=sc%cfg%imino_,sc%cfg%imaxo_
-                  call aen%decode(sc%SC(i,j,k,:),TYS)
+         do k=scs%cfg%kmino_,scs%cfg%kmaxo_
+            do j=scs%cfg%jmino_,scs%cfg%jmaxo_
+               do i=scs%cfg%imino_,scs%cfg%imaxo_
+                  call aen%decode(scs%SC(i,j,k,:),TYS)
                   call aen%inverse_transform_outputs(TYS,hY,nY_sub+1)
                   T(i,j,k)=hY(1)
                   do iY=1,n_Y
@@ -1170,8 +1085,8 @@ contains
 
          ! Perform and output monitoring
          call fs%get_max()
-         call sc%get_max()
-         call sc%get_int()
+         call scs%get_max()
+         call scs%get_int()
          call mfile%write()
          call cflfile%write()
          ! call consfile%write()
