@@ -20,7 +20,7 @@ Initial N2            :    7.1877706e-01
 Initial O2            :    2.1835044e-01
 
 ! Initial temperature  : 750
-Buffer temperature   : 300
+Buffer temperature   : 500
 
 # Neural network data files
 Auto encoder         : auto_encoder.bin

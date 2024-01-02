@@ -497,9 +497,9 @@ contains
          end if
 
          ! Set initial conditions
-         do k=fc%cfg%kmin_,fc%cfg%kmax_
-            do j=fc%cfg%jmin_,fc%cfg%jmax_
-               do i=fc%cfg%imin_,fc%cfg%imax_
+         do k = fc%cfg%kmino_, fc%cfg%kmaxo_
+            do j = fc%cfg%jmino_, fc%cfg%jmaxo_
+               do i = fc%cfg%imino_, fc%cfg%imaxo_
 
                   if ((i.ge.imin).and.(i.le.imax).and.(j.ge.jmin).and.(j.le.jmax).and.(k.ge.kmin).and.(k.le.kmax)) then
                      fc%SC(i,j,k, nspec+1)=(SC_init(i,j,k) - tmp_sc_min) / (tmp_sc_max - tmp_sc_min) * 300.0_WP + 700.0_WP

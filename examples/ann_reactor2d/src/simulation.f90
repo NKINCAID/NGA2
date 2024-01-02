@@ -743,12 +743,11 @@ contains
          tmp_sc_max = maxval(SC_init)
 
          ! Set initial conditions
-         do k=scs%cfg%kmin_,scs%cfg%kmax_
-            do j=scs%cfg%jmin_,scs%cfg%jmax_
-               do i=scs%cfg%imin_,scs%cfg%imax_
+         do k = scs%cfg%kmino_, scs%cfg%kmaxo_
+            do j = scs%cfg%jmino_, scs%cfg%jmaxo_
+               do i = scs%cfg%imino_, scs%cfg%imaxo_
 
                   ! Initialize thrmochemical variables
-                  h_init=h_init ! I'm not sure if this good for enthalpy + What value should buffer zone have?
                   ! The following if statement would spoil the fading for T
                   if ((i.ge.imin).and.(i.le.imax).and.(j.ge.jmin).and.(j.le.jmax).and.(k.ge.kmin).and.(k.le.kmax)) then
                      T(i,j,k)=(SC_init(i,j,k) - tmp_sc_min) / (tmp_sc_max - tmp_sc_min) * 300.0_WP + 700.0_WP
