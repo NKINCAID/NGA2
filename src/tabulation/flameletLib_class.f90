@@ -10,7 +10,7 @@ module flameletLib_class
    public :: flameletLib,modify_varname
 
    ! List of known available flamelet models
-   integer, parameter, public :: sfm=1       !< Steady Flamelet Model (SFM)
+   integer, parameter, public :: sfm=1                       !< Steady Flamelet Model (SFM)
 
    !> Flamelet library object definition
    type :: flameletLib
@@ -44,6 +44,7 @@ module flameletLib_class
       procedure constructor
    end interface flameletLib
 
+   
 contains
 
 
@@ -84,6 +85,7 @@ contains
       ! Allocate array to specify wether the variables have been found
       allocate(self%found(self%nvar_in))
    end function constructor
+
 
    subroutine readfile(this,ifile)
       implicit none
@@ -206,6 +208,7 @@ contains
       close(iunit)
    end subroutine readfile
 
+
    subroutine cleanup(this)
       implicit none
       class(flameletLib), intent(inout) :: this
@@ -215,6 +218,7 @@ contains
       nullify(this%input_data)
       nullify(this%Z)
    end subroutine cleanup
+
 
    subroutine modify_varname(input_str,search_str,replace_str)
       character(len=*), intent(inout) :: input_str
@@ -227,4 +231,6 @@ contains
          input_str=trim(replace_str//input_str(pos_sub+len_search:len_input))
       end if
    end subroutine
+
+   
 end module flameletLib_class

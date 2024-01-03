@@ -280,15 +280,23 @@ contains
 
       ! Create a combustion model
       create_combustion_model: block
-         use flamelet_class, only: sfm
-         use string,         only: str_medium
+         use string,            only: str_medium
+         use flameletLib_class, only: sfm
+         use tabulation,        only: tabulate_flamelet
          character(len=str_medium) :: chfname
+         logical :: mkchmtbl
+         ! Create the chemtable
          call param_read('Chemtable file name',chfname)
-         call param_read('Filtering levels',nfilter)
-         call param_read('Density limiter',rho_limiter)
+         call param_read('Create chemtable',mkchmtbl)
+         if (cfg%amRoot) then
+            if (mkchmtbl) call tabulate_flamelet(model=sfm,chfname=chfname)
+         end if
          ! Construct the flamelet object
          flm=flamelet(cfg=cfg,flmModel=sfm,tablefile=trim(chfname),name='Steady flamelet model')
          call flm%print()
+         ! Read in control parameters for density
+         call param_read('Filtering levels',nfilter)
+         call param_read('Density limiter',rho_limiter)
       end block create_combustion_model
 
 

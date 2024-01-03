@@ -11,9 +11,6 @@ module flamelet_class
    ! Expose type/constructor/methods
    public :: flamelet
 
-   ! List of known available flamelet models
-   integer, parameter, public :: sfm=1                       !< Steady Flamelet Model (SFM)
-
    !> flamelet object definition
    type :: flamelet
 
@@ -30,8 +27,9 @@ module flamelet_class
       integer :: flmModel
 
       ! Field variables
-      real(WP), dimension(:,:,:), allocatable :: Zvar !< Favre-spatially-filtered variance of the mixture fraction
-      real(WP), dimension(:,:,:), allocatable :: chi  !< Favre-spatially-filtered scalar dissipation rate
+      real(WP), dimension(:,:,:), allocatable :: Zvar        !< Favre-spatially-filtered variance of the mixture fraction
+      real(WP), dimension(:,:,:), allocatable :: chi         !< Favre-spatially-filtered scalar dissipation rate
+
    contains
       procedure :: get_Zvar
       procedure :: get_chi
@@ -49,6 +47,7 @@ contains
 
    !> Default constructor for flamelet object
    function constructor(cfg,flmModel,tablefile,name) result(self)
+      use flameletLib_class, only: sfm
       implicit none
       type(flamelet) :: self
       class(config), target, intent(in) :: cfg

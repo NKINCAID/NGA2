@@ -44,7 +44,6 @@ module chemtable_class
       ! Index of density
       integer  :: index_rho
 
-      
    contains
       procedure :: lookup
       procedure :: lookup_rho
@@ -60,7 +59,9 @@ module chemtable_class
       procedure constructor
    end interface chemtable
 
+
 contains
+
 
    !> Default constructor for chemtable object
    function constructor(cfg,fdata) result(self)
@@ -125,6 +126,7 @@ contains
       ! Close the file
       call MPI_FILE_CLOSE(ifile,ierr)
    end function constructor
+
 
    !< Look in the chemtable for the variable named 'tag'
    subroutine lookup(this,tag,R,A1,A2,A3,n)
@@ -207,6 +209,7 @@ contains
       end do
    end subroutine lookup
 
+
    !< Look in the chemtable for the density with different interpolation than for other variables
    subroutine lookup_rho(this,R,A1,A2,A3,n)
       implicit none
@@ -280,6 +283,7 @@ contains
       end do
    end subroutine lookup_rho
 
+
    function lookup_rho_val(this,A1,A2,A3) result(rho_val)
       implicit none
       class(chemtable), intent(in) :: this
@@ -350,6 +354,7 @@ contains
          w32*(w21*(w11/this%table(i1,i2,i3+1,var_ind)+w12/this%table(i1+1,i2,i3+1,var_ind))+w22*(w11/this%table(i1,i2+1,i3+1,var_ind)+w12/this%table(i1+1,i2+1,i3+1,var_ind))))
    end function lookup_rho_val
 
+
    !< Look in the chemtable for the density
    function lookup_rho_der(this,dir) result(rho_der_val)
       implicit none
@@ -389,6 +394,7 @@ contains
          c32*(c21*(c11*this%table(i1,i2,i3+1,var_ind)+c12*this%table(i1+1,i2,i3+1,var_ind))+c22*(c11*this%table(i1,i2+1,i3+1,var_ind)+c12*this%table(i1+1,i2+1,i3+1,var_ind)))
    end function lookup_rho_der
 
+
    !< Find the maximum of a variable in the chemtable
    subroutine lookup_max(this,tag,R)
       implicit none
@@ -403,6 +409,7 @@ contains
       ! Return the max
       R=maxval(this%table(:,:,:,var_ind))
    end subroutine lookup_max
+
 
    !< Find the maximum of a variable in the chemtable
    subroutine lookup_min(this,tag,R)
@@ -419,6 +426,7 @@ contains
       R=minval(this%table(:,:,:,var_ind))
    end subroutine lookup_min
 
+   !< Get the index of a variable
    function get_var_ind(this,tag) result(var_ind)
       implicit none
       class(chemtable), intent(inout) :: this
@@ -433,4 +441,6 @@ contains
          call die('[chemtable get_var_ind] unknown variable : '//trim(tag))
       end if
    end function
+
+
 end module chemtable_class

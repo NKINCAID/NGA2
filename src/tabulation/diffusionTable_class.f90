@@ -61,14 +61,18 @@ contains
 
 
    !> Default constructor for diffusionTable object
-   function constructor(flmlib) result(self)
+   function constructor(flmlib,filename) result(self)
       use param, only: param_read
       implicit none
       type(diffusionTable) :: self
       class(flameletlib), target, intent(in) :: flmlib
+      character(len=str_medium),  intent(in) :: filename
 
       ! Point to the flmlib object
       self%flmlib=>flmlib
+
+      ! Set the file name
+      self%filename=filename
 
       ! Read the dimension of the final table
       call param_read('Number of points for mean Z',self%nZMean)
@@ -83,8 +87,6 @@ contains
       self%nvar_out=self%flmlib%nvar_in
       allocate(self%output_name(self%nvar_out))
       self%output_name=self%flmlib%input_name(1:self%flmlib%nvar_in)
-
-      call param_read('Table filename',self%filename)
 
       call param_read('Scale for third direction',self%Z3_scale)
 
@@ -101,6 +103,7 @@ contains
       allocate(self%postconv(self%flmlib%nvar_in,self%nZMean,self%nZVar,self%flmlib%nfiles))
    end function constructor
 
+   
    subroutine create_Zmean(this)
       implicit none
       class(diffusionTable), intent(inout) :: this
@@ -142,6 +145,7 @@ contains
       end do
    end subroutine create_Zmean
 
+
    subroutine create_Zvar(this)
       implicit none
       class(diffusionTable), intent(inout) :: this
@@ -151,6 +155,7 @@ contains
          this%ZVar(izv)=0.25_WP*(real(izv-1,WP)/real(this%nZVar-1,WP))**2
       end do
    end subroutine create_Zvar
+
 
    subroutine create_Z3(this)
       implicit none
@@ -180,6 +185,7 @@ contains
          end select
       end if
    end subroutine create_Z3
+
 
    subroutine create_beta_pdf(this,zm,zv)
       use mathtools, only: gammaln
@@ -245,6 +251,7 @@ contains
       this%pdf=this%pdf/sum(this%pdf)
    end subroutine create_beta_pdf
 
+
    subroutine convolute(this,ifile)
       implicit none
       class(diffusionTable), intent(inout) :: this
@@ -283,6 +290,7 @@ contains
       nullify(this%pdf)
    end subroutine convolute
 
+   
    subroutine convert_names(this)
       use flameletLib_class, only: modify_varname
       use param,             only: param_getsize,param_read
@@ -318,6 +326,7 @@ contains
          call modify_varname(this%output_name(var),'massfraction-','Y_')
       end do
    end subroutine convert_names
+
 
    subroutine setup(this)
       implicit none
@@ -408,6 +417,7 @@ contains
       end do
    end subroutine setup
 
+
    subroutine stats(this)
       implicit none
       class(diffusionTable), intent(inout) :: this
@@ -466,4 +476,6 @@ contains
       ! Close the data file
       close(iunit)
    end subroutine diffusionTable_write
+
+
 end module diffusionTable_class
