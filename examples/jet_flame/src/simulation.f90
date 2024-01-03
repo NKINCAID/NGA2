@@ -21,8 +21,8 @@ module simulation
    type(lowmach),     public :: fs
    type(vdscalar),    public :: sc    
    type(timetracker), public :: time
-   type(sgsmodel),    public :: sgs   !> SGS model
-   type(flamelet),    public :: flm   !> Flamelet model
+   type(sgsmodel),    public :: sgs
+   type(flamelet),    public :: flm
 
    !> Ensight postprocessing
    type(ensight) :: ens_out
@@ -34,8 +34,8 @@ module simulation
    public :: simulation_init,simulation_run,simulation_final
 
    !> Private work arrays
-   real(WP), dimension(:,:,:), allocatable :: resU,resV,resW,resSC
-   real(WP), dimension(:,:,:), allocatable :: Ui,Vi,Wi
+   real(WP), dimension(:,:,:),     allocatable :: resU,resV,resW,resSC
+   real(WP), dimension(:,:,:),     allocatable :: Ui,Vi,Wi
    real(WP), dimension(:,:,:,:,:), allocatable :: gradU
 
    !> Inlet
@@ -361,7 +361,7 @@ contains
          ! Mixture fraction gradient
          ZgradMagSq=sc%grad_mag_sq(itpr_x=fs%itpr_x,itpr_y=fs%itpr_y,itpr_z=fs%itpr_z)
          ! Mixture fraction variance
-         call flm%compute_Zvar(delta=sgs%delta,ZgradMagSq=ZgradMagSq,Z=sc%SC)
+         call flm%get_Zvar(delta=sgs%delta,ZgradMagSq=ZgradMagSq,Z=sc%SC)
          ! Lookup density
          call flm%chmtbl%lookup('density',sc%rho,sc%SC,flm%Zvar,flm%chi,ncells)
          ! Find the min and max for rho
@@ -477,6 +477,7 @@ contains
    subroutine simulation_run
       implicit none
 
+
       ! Perform time integration
       do while (.not.time%done())
 
@@ -495,9 +496,6 @@ contains
          fs%Vold=fs%V; fs%rhoVold=fs%rhoV
          fs%Wold=fs%W; fs%rhoWold=fs%rhoW
 
-         ! Apply time-varying Dirichlet conditions
-         ! This is where time-dpt Dirichlet would be enforced
-
          ! Lookup viscosity
          call flm%chmtbl%lookup('viscosity',fs%visc,sc%SC,flm%Zvar,flm%chi,ncells)
          ! Lookup diffusivity
@@ -505,9 +503,9 @@ contains
          ! Mixture fraction gradient
          ZgradMagSq=sc%grad_mag_sq(itpr_x=fs%itpr_x,itpr_y=fs%itpr_y,itpr_z=fs%itpr_z)
          ! Mixture fraction variance
-         call flm%compute_Zvar(delta=sgs%delta,ZgradMagSq=ZgradMagSq,Z=sc%SC)
+         call flm%get_Zvar(delta=sgs%delta,ZgradMagSq=ZgradMagSq,Z=sc%SC)
          ! Scalar dissipation rate
-         call flm%compute_chi(mueff=fs%visc,rho=sc%rho,ZgradMagSq=ZgradMagSq)
+         call flm%get_chi(mueff=fs%visc,rho=sc%rho,ZgradMagSq=ZgradMagSq)
          
          ! Turbulence modeling
          sgs_modeling: block
@@ -522,8 +520,7 @@ contains
          ! Perform sub-iterations
          do while (time%it.le.time%itmax)
 
-            ! ============= SCALAR SOLVER =======================
-
+            ! ============= SCALAR SOLVER ============= !
             ! Build mid-time scalar
             sc%SC=0.5_WP*(sc%SC+sc%SCold)
 
@@ -556,10 +553,9 @@ contains
                   sc%SC(i,j,k)=2.0_WP*Z_cof-sc%SC(i+1,j,k)
                end do
             end block dirichlet_scalar
-            ! ===================================================
+            ! ========================================= !
 
-            ! ============ UPDATE DENSITY ====================
-
+            ! ============ UPDATE DENSITY ============ !
             ! Lookup density
             call flm%chmtbl%lookup('density',sc%rho,sc%SC,flm%Zvar,flm%chi,ncells)
             ! Smooth density
@@ -576,10 +572,9 @@ contains
                   call sc%cfg%sync(sc%rho)
                end if
             end if
-            ! ===================================================
+            ! ========================================= !
 
-            ! ============ VELOCITY SOLVER ======================
-
+            ! ============ VELOCITY SOLVER ============ !
             ! Build n+1 density
             fs%rho=0.5_WP*(sc%rho+sc%rhoold)
 
@@ -615,12 +610,12 @@ contains
                call fs%get_bcond('jet',mybc)
                do n=1,mybc%itr%no_
                   i=mybc%itr%map(1,n); j=mybc%itr%map(2,n); k=mybc%itr%map(3,n)
-                  fs%U(i,j,k)   =U_jet
+                  fs%U(i,j,k)=U_jet
                end do
                call fs%get_bcond('coflow',mybc)
                do n=1,mybc%itr%no_
                   i=mybc%itr%map(1,n); j=mybc%itr%map(2,n); k=mybc%itr%map(3,n)
-                  fs%U(i,j,k)   =U_cof
+                  fs%U(i,j,k)=U_cof
                end do
                call fs%rho_multiply()
             end block dirichlet_velocity
@@ -642,7 +637,7 @@ contains
             fs%rhoV=fs%rhoV-time%dtmid*resV
             fs%rhoW=fs%rhoW-time%dtmid*resW
             call fs%rho_divide
-            ! ===================================================
+            ! ========================================= !
 
             ! Increment sub-iteration counter
             time%it=time%it+1
@@ -670,12 +665,14 @@ contains
 
       end do
 
+      
    end subroutine simulation_run
 
 
    !> Finalize the NGA2 simulation
    subroutine simulation_final
       implicit none
+
 
       ! Get rid of all objects - need destructors
       ! monitor
@@ -685,6 +682,7 @@ contains
 
       ! Deallocate work arrays
       deallocate(resSC,resU,resV,resW,Ui,Vi,Wi,drho,gradU,ZgradMagSq)
+
 
    end subroutine simulation_final
 

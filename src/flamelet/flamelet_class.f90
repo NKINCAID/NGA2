@@ -33,8 +33,8 @@ module flamelet_class
       real(WP), dimension(:,:,:), allocatable :: Zvar !< Favre-spatially-filtered variance of the mixture fraction
       real(WP), dimension(:,:,:), allocatable :: chi  !< Favre-spatially-filtered scalar dissipation rate
    contains
-      procedure :: compute_Zvar
-      procedure :: compute_chi
+      procedure :: get_Zvar
+      procedure :: get_chi
       procedure :: print=>flamelet_print
    end type flamelet
 
@@ -81,7 +81,7 @@ contains
    end function constructor
 
 
-   subroutine compute_Zvar(this,delta,ZgradMagSq,Z)
+   subroutine get_Zvar(this,delta,ZgradMagSq,Z)
       class(flamelet), intent(inout) :: this
       real(WP), dimension(this%cfg%imin_:this%cfg%imax_,this%cfg%jmin_:this%cfg%jmax_,this%cfg%kmin_:this%cfg%kmax_), intent(in) :: delta
       real(WP), dimension(this%cfg%imino_:this%cfg%imaxo_,this%cfg%jmino_:this%cfg%jmaxo_,this%cfg%kmino_:this%cfg%kmaxo_), intent(in) :: ZgradMagSq,Z
@@ -99,10 +99,10 @@ contains
       call this%cfg%sync(this%Zvar)
       ! Clip the computed Variance
       this%Zvar=max(0.0_WP,min(Z*(1.0_WP-Z),this%Zvar))
-   end subroutine compute_Zvar
+   end subroutine get_Zvar
 
 
-   subroutine compute_chi(this,mueff,rho,ZgradMagSq)
+   subroutine get_chi(this,mueff,rho,ZgradMagSq)
       class(flamelet), intent(inout) :: this
       real(WP), dimension(this%cfg%imino_:this%cfg%imaxo_,this%cfg%jmino_:this%cfg%jmaxo_,this%cfg%kmino_:this%cfg%kmaxo_), intent(in) :: mueff,rho,ZgradMagSq
       real(WP), parameter :: Cchi=2.0_WP
@@ -117,7 +117,7 @@ contains
       end do
       ! Sync it
       call this%cfg%sync(this%chi)
-   end subroutine compute_chi
+   end subroutine get_chi
 
 
    !> Print out info for flamelet model

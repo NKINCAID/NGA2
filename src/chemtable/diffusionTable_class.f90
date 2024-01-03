@@ -23,8 +23,8 @@ module diffusionTable_class
       character(len=str_long) :: Z3_scale
 
       ! Table parameters
-      integer :: nZMean, nZVar, n3
-      real(WP), dimension(:), allocatable :: ZMean, ZVar, Z3
+      integer :: nZMean, nZVar,n3
+      real(WP), dimension(:), allocatable :: ZMean,ZVar,Z3
 
       ! Beta pdf
       real(WP), dimension(:), pointer :: pdf
