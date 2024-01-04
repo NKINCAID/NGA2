@@ -88,6 +88,7 @@ contains
 
 
    subroutine readfile(this,ifile)
+      use, intrinsic :: iso_fortran_env, only: output_unit
       implicit none
       class(flameletLib), intent(inout) :: this
       integer, intent(in) :: ifile
@@ -191,10 +192,7 @@ contains
 
       ! Do we have all the variables?
       do var=1,this%nvar_in
-         if (.not.this%found(var)) then
-            print*,"Variable ",trim(this%input_name(var))," not found in flamelet file"
-            stop
-         end if
+         if (.not.this%found(var)) call die("[flameletLib readfile] Variable "//trim(this%input_name(var))//" not found in flamelet file")
       end do
 
       ! Force 0 at Z=1 for chi

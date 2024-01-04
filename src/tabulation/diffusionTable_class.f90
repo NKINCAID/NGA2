@@ -62,6 +62,7 @@ contains
 
    !> Default constructor for diffusionTable object
    function constructor(flmlib,filename) result(self)
+      use, intrinsic :: iso_fortran_env, only: output_unit
       use param, only: param_read
       implicit none
       type(diffusionTable) :: self
@@ -78,7 +79,7 @@ contains
       call param_read('Number of points for mean Z',self%nZMean)
       call param_read('Number of points for variance of Z',self%nZVar)
       call param_read('Number of points for third direction',self%n3)
-      if (self%n3.lt.self%flmlib%nfiles) print*,'WARNING: No. points for the third direction is less than the number of flamelet files'
+      if (self%n3.lt.self%flmlib%nfiles) write(output_unit,'("WARNING: No. points for the third direction is less than the number of flamelet files")')
 
       ! Stoichiometric mixture fraction
       call param_read('Stoichiometric mixture fraction',self%Zst)
@@ -329,6 +330,7 @@ contains
 
 
    subroutine setup(this)
+      use, intrinsic :: iso_fortran_env, only: output_unit
       implicit none
       class(diffusionTable), intent(inout) :: this
       integer  :: izm,izv,i3,var
@@ -340,8 +342,8 @@ contains
       ! Convert to a chi=0 flamelet
       if (this%flmlib%combModel.eq.sfm) then
          file=minloc(maxval(maxval(this%postconv(this%flmlib%nvar_in,:,:,:),dim=1),dim=1),dim=1)
-         print*,''
-         print*,'Flamelet #',file,'used as chi=0 flamelet'
+         write(output_unit,'(" ")')
+         write(output_unit,'("Flamelet # ",i2" used as chi=0 flamelet")') file
          this%postconv(this%flmlib%nvar_in,:,:,file)=0.0_WP
       end if
 
