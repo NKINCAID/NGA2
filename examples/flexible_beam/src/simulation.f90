@@ -1,16 +1,12 @@
 !> Various definitions and tools for running an NGA2 simulation
 module simulation
-   !use beamimpact_class,   only: beamimpact
-   !use fracturetest_class, only: fracturetest
-   use object_class,  only: object
+   use beam_class,    only: beam
    use channel_class, only: channel
    implicit none
    private
    
    !> Solid simulation
-   !type(beamimpact) :: solid
-   !type(fracturetest) :: solid
-   type(object) :: solid
+   type(beam) :: solid
    
    !> Fluid simulation
    type(channel) :: fluid
