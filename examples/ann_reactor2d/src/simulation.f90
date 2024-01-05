@@ -658,15 +658,18 @@ contains
          ! Print species information
          if (cfg%amRoot) then
 
+            ! Species info
+            write(output_unit,'(" >  Species information")')
+
             ! Sub-array used in ANN
-            write(output_unit,'("Sub-array species used in the ann:")',advance='No')
+            write(output_unit,'(" Sub-array species used in the ann:")',advance='No')
             do iY_sub=1,nY_sub
                write(output_unit,'(a)',advance='No') ' '//trim(spec_name(int(aen%vectors(aen%ivec_spec_inds)%vector(iY_sub))))
             end do
             write(output_unit,'(" ")')
 
             ! Post processed species
-            write(output_unit,'("Post processed species:")',advance='No')
+            write(output_unit,'(" Post processed species:")',advance='No')
             do iY=1,n_Y
                write(output_unit,'(a)',advance='No') ' '//trim(Y_name(iY))
             end do
@@ -683,12 +686,13 @@ contains
          end do
 
          ! Process the species indices and set initial mass fractions
+         if (cfg%amRoot) write(output_unit,'(" Initial mass fractions:")')
          do iY_sub=1,nY_sub
             ! Global species index
             ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
             Y_sub(iY_sub)=Y_init(ispec)
             if (cfg%amRoot) then
-               print*,"Initial ",trim(spec_name(ispec)),Y_sub(iY_sub)
+               write(output_unit,'(a10,": "es12.5)') trim(spec_name(ispec)),Y_sub(iY_sub)
             end if
          end do
 
@@ -763,10 +767,9 @@ contains
                   ! Get transport properties
                   call trn%get_transport(sc%SC(i,j,k,:),trnprop_tmp)
                   call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
-                  sc%rho(i,j,k)   =trnprop(2)
+                  sc%rho(i,j,k)   =exp(trnprop(2))
                   fs%visc(i,j,k)  =trnprop(3)
                   sc%diff(i,j,k,:)=trnprop(4)
-                  sc%rho(i,j,k)   =exp(sc%rho(i,j,k))
 
                   ! Map the neural network scalars to Y (for visualization purposes at t=0)
                   call aen%decode(sc%SC(i,j,k,:),TYS)
@@ -1007,10 +1010,9 @@ contains
                      call trn%get_transport(sc%SC(i,j,k,:),trnprop_tmp)
                      call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
                      T(i,j,k)        =trnprop(1)
-                     sc%rho(i,j,k)   =trnprop(2)
+                     sc%rho(i,j,k)   =exp(trnprop(2))
                      fs%visc(i,j,k)  =trnprop(3)
                      sc%diff(i,j,k,:)=trnprop(4)
-                     sc%rho(i,j,k)   =exp(sc%rho(i,j,k))
                   end do
                end do
             end do
