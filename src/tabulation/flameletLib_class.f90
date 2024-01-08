@@ -99,7 +99,7 @@ contains
       real(WP), dimension(:), pointer :: tmp
 
       ! Open the file
-      open(newunit=iunit,file=trim(this%files(ifile)),form='formatted',status='old',iostat=ierr)
+      open(newunit=iunit,file=trim('flamelets/'//this%files(ifile)),form='formatted',status='old',iostat=ierr)
       if (ierr.ne.0) then
          call die("[flameletLib readfile] Error opening the file : " // trim(this%files(ifile)))
       end if

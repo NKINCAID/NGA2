@@ -1,5 +1,5 @@
 # Parallelization
-Partition :	8 1 1
+Partition : 8 1 1
 
 # Mesh definition
 Lx : 0.08
@@ -32,13 +32,13 @@ Name conversion                      : viscosity = mu
 List of Flamelets                    : CH4_p01_0chi00003tf0300to0300 CH4_p01_0chi00005tf0300to0300 CH4_p01_0chi00007tf0300to0300 CH4_p01_0chi00020tf0300to0300 CH4_p01_0chi00010tf0300to0300 CH4_p01_0chi00015tf0300to0300 CH4_p01_0chi00020tf0300to0300 CH4_p01_0chi004.5tf0300to0300 CH4_p01_0chi022.5tf0300to0300 CH4_p01_0chi24.375tf0300to0300 CH4_p01_0chi25.7812tf0300to0300 CH4_p01_0chi26.8359tf0300to0300 CH4_p01_0chi27.627tf0300to0300 CH4_p01_0chi28.2202tf0300to0300 CH4_p01_0chi28.6652tf0300to0300 CH4_p01_0chi28.9989tf0300to0300 CH4_p01_0chi29.703tf0300to0300 CH4_p01_0chi29.2492tf0300to0300 CH4_p01_0chi29.4369tf0300to0300 CH4_p01_0chi29.5776tf0300to0300 CH4_p01_0chi29.6832tf0300to0300 CH4_p01_0chi29.6882tf0300to0300
 
 # Turbulence
-SGS Schmidt number  : 1
+SGS Schmidt number : 1
 
 # Time integration
-Max timestep size :	5e-6
-Max cfl number    :	0.8
+Max timestep size : 5e-6
+Max cfl number    : 0.8
 Sub iterations    : 3
-Max time          : 50
+Max time          : 5e-3
 
 # Pressure solver
 Pressure tolerance : 1e-10
