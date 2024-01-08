@@ -97,8 +97,8 @@ contains
       allocate(self%Z3(self%n3))
 
       ! Create the first two directions of the table
-      call self%create_Zmean
-      call self%create_Zvar
+      call self%create_Zmean()
+      call self%create_Zvar()
 
       ! Allocate arrays
       allocate(self%postconv(self%flmlib%nvar_in,self%nZMean,self%nZVar,self%flmlib%nfiles))
@@ -351,7 +351,7 @@ contains
       allocate(this%output_data(this%nZMean,this%nZVar,this%n3,this%nvar_out))
 
       ! Create mesh in thrid direction
-      call this%create_Z3
+      call this%create_Z3()
 
       ! Loop over the three mapping directions
       do i3=1,this%n3

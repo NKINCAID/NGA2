@@ -25,7 +25,6 @@ module tabulation
       type(diffusionTable) :: dfftbl
       integer :: ifile
 
-
       ! Log
       write(output_unit,'("*** Creating flamelet library ***")')
 
@@ -45,17 +44,17 @@ module tabulation
          ! Convolute with PDF
          call dfftbl%convolute(ifile)
          ! Deallocate the data array
-         call dfftbl%flmlib%cleanup
+         call dfftbl%flmlib%cleanup()
       end do
 
       ! Change the variables names
-      call dfftbl%convert_names
+      call dfftbl%convert_names()
       ! Compute the table
-      call dfftbl%setup
+      call dfftbl%setup()
       ! Print some statistics
-      call dfftbl%stats
+      call dfftbl%stats()
       ! Write the table
-      call dfftbl%write
+      call dfftbl%write()
    end subroutine tabulate_flamelet
 
 

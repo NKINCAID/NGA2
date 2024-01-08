@@ -1,6 +1,7 @@
 !> Various definitions and tools for running an NGA2 simulation
 module simulation
    use precision,         only: WP
+   use string,            only: str_medium
    use geometry,          only: cfg
    use ddadi_class,       only: ddadi
    use hypre_str_class,   only: hypre_str
@@ -46,16 +47,17 @@ module simulation
    !> Integral of pressure residual
    real(WP) :: int_RP=0.0_WP
 
-   !> Combustion
-   integer  :: nfilter,ncells
-   logical  :: rho_limiter
-   real(WP) :: rho_min,rho_max
-   real(WP), dimension(:,:,:), allocatable :: drho
-   real(WP), dimension(:,:,:), allocatable :: ZgradMagSq
-   real(WP), dimension(:,:,:), allocatable :: Y_OH
-
    !> Turbulence
    real(WP) :: SchmidtSGS
+
+   !> Combustion
+   integer  :: nfilter,ncells,n_Y,iY
+   logical  :: rho_limiter
+   real(WP) :: rho_min,rho_max
+   real(WP), dimension(:,:,:),   allocatable :: drho,ZgradMagSq,T
+   real(WP), dimension(:,:,:,:), allocatable :: Y
+   character(len=str_medium), dimension(:), allocatable :: Y_name
+
 
 contains
 
@@ -223,31 +225,30 @@ contains
 
    !> Initialization of problem solver
    subroutine simulation_init
-      use param, only: param_read
+      use param, only: param_getsize,param_read
       implicit none
 
 
-      ! Read in inlet information
+      ! Read in inputs
       call param_read('Z jet',Z_jet)
       call param_read('D jet',D_jet)
       call param_read('U jet',U_jet)
       call param_read('Z coflow',Z_cof)
       call param_read('D coflow',D_cof)
       call param_read('U coflow',U_cof)
+      n_Y=param_getsize('Ensight output species')
 
 
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
          use hypre_str_class, only: pcg_pfmg2
          use lowmach_class,   only: dirichlet,clipped_neumann,slip
-         real(WP) :: visc
          ! Create flow solver
          fs=lowmach(cfg=cfg,name='Variable density low Mach NS')
-         ! Define jet and coflow boundary conditions
-         call fs%add_bcond(name='jet'   ,type=dirichlet,face='x',dir=-1,canCorrect=.false.,locator=jet   )
-         call fs%add_bcond(name='coflow',type=dirichlet,face='x',dir=-1,canCorrect=.false.,locator=coflow)
-         ! Outflow on the right
-         call fs%add_bcond(name='outflow',type=clipped_neumann,face='x',dir=+1,canCorrect=.true.,locator=xp_locator)
+         ! Define boundary conditions
+         call fs%add_bcond(name='jet'    ,type=dirichlet      ,face='x',dir=-1,canCorrect=.false.,locator=jet)
+         call fs%add_bcond(name='coflow' ,type=dirichlet      ,face='x',dir=-1,canCorrect=.false.,locator=coflow)
+         call fs%add_bcond(name='outflow',type=clipped_neumann,face='x',dir=+1,canCorrect=.true. ,locator=xp_locator)
          ! Configure pressure solver
          ps=hypre_str(cfg=cfg,name='Pressure',method=pcg_pfmg2,nst=7)
          ps%maxlevel=18
@@ -261,7 +262,7 @@ contains
 
 
       ! Create a scalar solver
-      create_scalar: block
+      create_scalar_solver: block
          use vdscalar_class, only: dirichlet,neumann,quick
          real(WP) :: diffusivity
          ! Create scalar solver
@@ -275,12 +276,11 @@ contains
          ss=ddadi(cfg=cfg,name='Scalar',nst=13)
          ! Setup the solver
          call sc%setup(implicit_solver=ss)
-      end block create_scalar
+      end block create_scalar_solver
 
 
       ! Create a combustion model
-      create_combustion_model: block
-         use string,            only: str_medium
+      create_combustion: block
          use flameletLib_class, only: sfm
          use tabulation,        only: tabulate_flamelet
          character(len=str_medium) :: chfname
@@ -288,16 +288,14 @@ contains
          ! Create the chemtable
          call param_read('Chemtable file name',chfname)
          call param_read('Create chemtable',mkchmtbl)
-         if (cfg%amRoot) then
-            if (mkchmtbl) call tabulate_flamelet(model=sfm,chfname=chfname)
-         end if
+         if ((cfg%amRoot).and.(mkchmtbl)) call tabulate_flamelet(model=sfm,chfname=chfname)
          ! Construct the flamelet object
          flm=flamelet(cfg=cfg,flmModel=sfm,tablefile=trim(chfname),name='Steady flamelet model')
          call flm%print()
          ! Read in control parameters for density
          call param_read('Filtering levels',nfilter)
          call param_read('Density limiter',rho_limiter)
-      end block create_combustion_model
+      end block create_combustion
 
 
       ! Create a SGS model
@@ -318,18 +316,20 @@ contains
          allocate(Wi  (fs%cfg%imino_:fs%cfg%imaxo_,fs%cfg%jmino_:fs%cfg%jmaxo_,fs%cfg%kmino_:fs%cfg%kmaxo_))
          ! Scalar solver
          allocate(resSC(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
-         ! Combustion
-         allocate(drho      (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_)); drho=0.0_WP
-         allocate(ZgradMagSq(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_)); ZgradMagSq=0.0_WP
-         allocate(Y_OH      (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_)); Y_OH=0.0_WP
          ! Turbulence
          allocate(gradU(1:3,1:3,cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_))
+         ! Combustion
+         allocate(drho      (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))    ; drho=0.0_WP
+         allocate(ZgradMagSq(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))    ; ZgradMagSq=0.0_WP
+         allocate(T         (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))    ; T=0.0_WP
+         allocate(Y         (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,n_Y)); Y=0.0_WP
+         allocate(Y_name(n_Y))
       end block allocate_work_arrays
 
 
-      ! Initialize time tracker with subiterations
+      ! Initialize time tracker
       initialize_timetracker: block
-         time=timetracker(amRoot=fs%cfg%amRoot,name='jet_flame')
+         time=timetracker(amRoot=fs%cfg%amRoot,name='dlra')
          call param_read('Max timestep size',time%dtmax)
          call param_read('Max cfl number',time%cflmax)
          call param_read('Max time',time%tmax)
@@ -359,6 +359,7 @@ contains
       end block initialize_scalar
 
 
+      ! Initialize combustion
       initialize_combustion: block
          ! Number of cells
          ncells=cfg%nxo_*cfg%nyo_*cfg%nzo_
@@ -375,6 +376,13 @@ contains
          ! Find the min and max for rho
          call flm%chmtbl%lookup_max('density',rho_max)
          call flm%chmtbl%lookup_min('density',rho_min)
+         ! Post-processed thermochemical quantities
+         call flm%chmtbl%lookup('temperature',T,sc%SC,flm%Zvar,flm%chi,ncells)
+         call param_read('Ensight output species',Y_name)
+         do iY=1,n_Y
+            Y_name(iY)=trim('Y_'//Y_name(iY))
+            call flm%chmtbl%lookup(Y_name(iY),Y(:,:,:,iY),sc%SC,flm%Zvar,flm%chi,ncells)
+         end do
       end block initialize_combustion
 
 
@@ -389,12 +397,12 @@ contains
          call fs%get_bcond('jet',mybc)
          do n=1,mybc%itr%no_
             i=mybc%itr%map(1,n); j=mybc%itr%map(2,n); k=mybc%itr%map(3,n)
-            fs%U(i,j,k)   =U_jet
+            fs%U(i,j,k)=U_jet
          end do
          call fs%get_bcond('coflow',mybc)
          do n=1,mybc%itr%no_
             i=mybc%itr%map(1,n); j=mybc%itr%map(2,n); k=mybc%itr%map(3,n)
-            fs%U(i,j,k)   =U_cof
+            fs%U(i,j,k)=U_cof
          end do
          ! Set density from scalar
          fs%rho=sc%rho
@@ -409,22 +417,43 @@ contains
       end block initialize_velocity
 
 
+      ! Get the jet Reynolds number
+      get_Re: block
+         use mpi_f08, only: MPI_ALLREDUCE,MPI_MAX
+         use parallel, only: MPI_REAL_WP
+         use vdscalar_class, only: bcond
+         use, intrinsic :: iso_fortran_env, only: output_unit
+         real(WP) :: myRe_jet,Re_jet
+         integer  :: i,j,k,ierr
+         type(bcond), pointer :: mybc
+         myRe_jet=-1.0_WP
+         call sc%get_bcond('jet',mybc)
+         if (mybc%itr%n_.gt.0) then
+            i=mybc%itr%map(1,1); j=mybc%itr%map(2,1); k=mybc%itr%map(3,1)
+            myRe_jet=sc%rho(i,j,k)*U_jet*D_jet/fs%visc(i,j,k)
+         end if
+         call MPI_ALLREDUCE(myRe_jet,Re_jet,1,MPI_REAL_WP,MPI_MAX,cfg%comm,ierr)
+         if (cfg%amRoot) write(output_unit,'("Jet Reynolds = ",es12.5)') Re_jet
+      end block get_Re
+
+
       ! Add Ensight output
       create_ensight: block
          ! Create Ensight output from cfg
-         ens_out=ensight(cfg=cfg,name='jet_flame')
+         ens_out=ensight(cfg=cfg,name='dlra')
          ! Create event for Ensight output
          ens_evt=event(time=time,name='Ensight output')
          call param_read('Ensight output period',ens_evt%tper)
          ! Add variables to output
-         call ens_out%add_scalar('pressure',fs%P)
-         call ens_out%add_vector('velocity',Ui,Vi,Wi)
-         call ens_out%add_scalar('divergence',fs%div)
-         call ens_out%add_scalar('density',sc%rho)
-         call ens_out%add_scalar('mixfrac',sc%SC)
-         call ens_out%add_scalar('chi',flm%chi)
-         call ens_out%add_scalar('Zvar',flm%Zvar)
-         call ens_out%add_scalar('Y_OH',Y_OH)
+         call ens_out%add_scalar('pressure'   ,fs%P)
+         call ens_out%add_vector('velocity'   ,Ui,Vi,Wi)
+         call ens_out%add_scalar('divergence' ,fs%div)
+         call ens_out%add_scalar('density'    ,sc%rho)
+         call ens_out%add_scalar('mixfrac'    ,sc%SC)
+         call ens_out%add_scalar('temperature',T)
+         do iY=1,n_Y
+            call ens_out%add_scalar(Y_name(iY),Y(:,:,:,iY))
+         end do
          ! Output to ensight
          if (ens_evt%occurs()) call ens_out%write_data(time%t)
       end block create_ensight
@@ -483,6 +512,7 @@ contains
 
    !> Perform an NGA2 simulation
    subroutine simulation_run
+      use, intrinsic :: iso_fortran_env, only: output_unit
       implicit none
 
 
@@ -504,15 +534,11 @@ contains
          fs%Vold=fs%V; fs%rhoVold=fs%rhoV
          fs%Wold=fs%W; fs%rhoWold=fs%rhoW
 
-         ! Lookup viscosity
+         ! Combustion pre-step
          call flm%chmtbl%lookup('viscosity',fs%visc,sc%SC,flm%Zvar,flm%chi,ncells)
-         ! Lookup diffusivity
          call flm%chmtbl%lookup('diffusivity',sc%diff,sc%SC,flm%Zvar,flm%chi,ncells)
-         ! Mixture fraction gradient
          ZgradMagSq=sc%grad_mag_sq(itpr_x=fs%itpr_x,itpr_y=fs%itpr_y,itpr_z=fs%itpr_z)
-         ! Mixture fraction variance
          call flm%get_Zvar(delta=sgs%delta,ZgradMagSq=ZgradMagSq,Z=sc%SC)
-         ! Scalar dissipation rate
          call flm%get_chi(mueff=fs%visc,rho=sc%rho,ZgradMagSq=ZgradMagSq)
          
          ! Turbulence modeling
@@ -527,6 +553,8 @@ contains
 
          ! Perform sub-iterations
          do while (time%it.le.time%itmax)
+
+            if (cfg%amRoot) write(output_unit,'(" >  it/ itmax = ",i0,"/",i0)') time%it,time%itmax
 
             ! ============= SCALAR SOLVER ============= !
             ! Build mid-time scalar
@@ -607,7 +635,7 @@ contains
             fs%V=2.0_WP*fs%V-fs%Vold+resV
             fs%W=2.0_WP*fs%W-fs%Wold+resW
 
-            ! Apply boundary conditions and update momentum
+            ! Apply boundary conditions
             call fs%apply_bcond(time%tmid,time%dtmid)
             call fs%rho_multiply()
             call fs%apply_bcond(time%tmid,time%dtmid)
@@ -644,7 +672,7 @@ contains
             fs%rhoU=fs%rhoU-time%dtmid*resU
             fs%rhoV=fs%rhoV-time%dtmid*resV
             fs%rhoW=fs%rhoW-time%dtmid*resW
-            call fs%rho_divide
+            call fs%rho_divide()
             ! ========================================= !
 
             ! Increment sub-iteration counter
@@ -657,11 +685,16 @@ contains
          call sc%get_drhodt(dt=time%dt,drhodt=resSC)
          call fs%get_div(drhodt=resSC)
 
-         ! Combustion post-process
-         call flm%chmtbl%lookup('Y_OH',Y_OH,sc%SC,flm%Zvar,flm%chi,ncells)
-
          ! Output to ensight
-         if (ens_evt%occurs()) call ens_out%write_data(time%t)
+         if (ens_evt%occurs()) then
+            ! Combustion post-process
+            call flm%chmtbl%lookup('temperature',T,sc%SC,flm%Zvar,flm%chi,ncells)
+            do iY=1,n_Y
+               call flm%chmtbl%lookup(Y_name(iY),Y(:,:,:,iY),sc%SC,flm%Zvar,flm%chi,ncells)
+            end do
+            ! wrtie
+            call ens_out%write_data(time%t)
+         end if
 
          ! Perform and output monitoring
          call fs%get_max()
@@ -689,7 +722,7 @@ contains
       ! timetracker
 
       ! Deallocate work arrays
-      deallocate(resSC,resU,resV,resW,Ui,Vi,Wi,drho,gradU,ZgradMagSq)
+      deallocate(resSC,resU,resV,resW,Ui,Vi,Wi,gradU,ZgradMagSq,drho,T,Y,Y_name)
 
 
    end subroutine simulation_final
