@@ -9,23 +9,23 @@ from matplotlib.lines import Line2D
 
 
 
-file =  "monitor/simulation"
-with open(file, 'r') as f:
-    lines = f.readlines()
+# file =  "monitor/simulation"
+# with open(file, 'r') as f:
+#     lines = f.readlines()
 
-names = lines[0].split()
-lines.pop(0)
-lines.pop(0)
+# names = lines[0].split()
+# lines.pop(0)
+# lines.pop(0)
 
-data = []
-for line in lines:
-    split_line = line.split()
-    data.append([float(val) for val in split_line])
-data = np.array(data)
+# data = []
+# for line in lines:
+#     split_line = line.split()
+#     data.append([float(val) for val in split_line])
+# data = np.array(data)
 
-time_array = data[:,names.index('Time')]
-T_array = data[:,names.index('Tmax')]
-P_array = data[:,names.index("Pthermo")]
+# time_array = data[:,names.index('Time')]
+# T_array = data[:,names.index('Tmax')]
+# P_array = data[:,names.index("Pthermo")]
 
 # gas = ct.Solution('cti/YAO_reduced.cti')
 # gas.set_equivalence_ratio(1.0, "NXC12H26", "O2:1.0,N2:3.76")
@@ -33,7 +33,7 @@ P_array = data[:,names.index("Pthermo")]
 gas = ct.Solution('cti/reducedS152R621_0.cti')
 gas.set_equivalence_ratio(1.0, "XC12H26:0.8649, HMN:0.1351", "O2:1.0,N2:3.76")
 
-gas.TP = 1000.0, 3.4e6
+gas.TP = 990.0, 3.4e6
 
 print()
 print("Initial {:10}    :    {:.7e}".format("enthalpy", gas.enthalpy_mass))
@@ -54,7 +54,7 @@ states.append(r.thermo.state, t=0.0)
 time = 0.0
 dt = 1.0e-6
 
-for i in range(1,1000):
+for i in range(1,10000):
     sim.advance(time + dt)
     time += dt
 
@@ -69,14 +69,14 @@ ax.plot(
     color=c[0],
 )
 
-ax.plot(
-    time_array  * 1000,
-    T_array,
-    lw=lw,
-    ls="--",
-    label="NGA2",
-    color=c[1],
-)
+# ax.plot(
+#     time_array  * 1000,
+#     T_array,
+#     lw=lw,
+#     ls="--",
+#     label="NGA2",
+#     color=c[1],
+# )
 
 ax.set(
     xlabel="Time [ms]",

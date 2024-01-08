@@ -506,6 +506,7 @@ contains
                   else
                      fc%SC(i,j,k, nspec+1)=T_buf
                   end if
+                  ! print *, i, j, k, SC_init(i,j,k), fc%SC(i,j,k, nspec+1)
 
                end do
             end do
@@ -559,18 +560,18 @@ contains
          call ens_out%add_scalar('viscosity', fc%visc)
          call ens_out%add_scalar('thermal_diff', fc%diff(:, :, :, nspec+1))
 
-         call ens_out%add_scalar('YNC12H26', fc%SC(:, :, :, sNXC12H26))
+         call ens_out%add_scalar('YNC12H26', fc%SC(:, :, :, sXC12H26))
+         ! call ens_out%add_scalar('HMN', fc%SC(:, :, :, sHMN))
+
          call ens_out%add_scalar('YOH', fc%SC(:, :, :, 5))
          call ens_out%add_scalar('YO2', fc%SC(:, :, :, sO2))
          call ens_out%add_scalar('YN2', fc%SC(:, :, :, sN2))
          call ens_out%add_scalar('T', fc%SC(:, :, :, nspec+1))
          call ens_out%add_scalar('YHO2', fc%SC(:, :, :, sHO2))
-         call ens_out%add_scalar('YSXC12H25', fc%SC(:, :, :, sSXC12H25))
 
-         call ens_out%add_scalar('SRC_YNC12H26', fc%SRCchem(:, :, :, sNXC12H26))
+         call ens_out%add_scalar('SRC_YNC12H26', fc%SRCchem(:, :, :, sXC12H26))
          call ens_out%add_scalar('SRC_YO2', fc%SRCchem(:, :, :, sO2))
          call ens_out%add_scalar('SRC_YHO2', fc%SRCchem(:, :, :, sHO2))
-         call ens_out%add_scalar('SRC_YSXC12H25', fc%SRCchem(:, :, :, sSXC12H25))
          call ens_out%add_scalar('SRC_T', fc%SRCchem(:, :, :, nspec+1))
 
          ! Output to ensight

@@ -66,7 +66,7 @@ contains
 
     !> Initialization of problem solver
     subroutine simulation_init
-        use param, only: param_read
+        use param, only: param_read, param_exists
         implicit none
 
         ! Create a low-Mach flow solver with bconds
@@ -153,8 +153,12 @@ contains
             integer :: n, i, j, k, ierr
             character(len=str_medium) :: fuel, oxidizer
             real(WP) :: moles_fuel
-            real(WP) :: T_init
+            real(WP) :: T_init, tmpY
             type(bcond), pointer :: mybc
+            character(len=str_medium), dimension(:), allocatable :: spec_name
+
+             allocate(spec_name(nspec))
+
 
             call param_read('Stoich moles fuel', moles_fuel)
             call param_read('Fuel', fuel)
@@ -177,35 +181,27 @@ contains
             tmp_sc = 1.0_WP
 
             isc_T = nspec + 1
-            ! tmp_sc = 1.0_WP
-            do k = fc%cfg%kmino_, fc%cfg%kmaxo_
-                do j = fc%cfg%jmino_, fc%cfg%jmaxo_
-                    do i = fc%cfg%imino_, fc%cfg%imaxo_
-                        !  if (i .ge. imin .and. i .le. imax .and. j .ge. jmin .and. j .le. jmax .and. k .ge. kmin .and. k .le. kmax) then
-                        !     continue
-                        ! else
-                        ! tmp_sc(i, j, k) = 0.0_WP
-                        ! end if
-                        ! Set mass fraction of fuel
-                        fc%SC(i, j, k, isc_fuel) = (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel)/ &
-                                                   (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                    (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                        ! Set mass fraction of O2
-                        fc%SC(i, j, k, isc_o2) = W_sp(isc_o2)/ &
-                                                 (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                  (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
-                        ! Set mass fraction of N2
-                        fc%SC(i, j, k, isc_n2) = 3.76_WP*W_sp(isc_n2)/ &
-                                                 (W_sp(isc_o2) + 3.76_WP*W_sp(isc_n2) + &
-                                                  (W_sp(isc_fuel)*tmp_sc(i, j, 1)*moles_fuel))
 
-                        ! else
-                        !     fc%SC(i, j, k, isc_n2) = 1.0_WP
-                        ! end if
-                        fc%SC(i, j, k, isc_T) = T_init
-                    end do
-                end do
-            end do
+             call fcmech_get_speciesnames(spec_name)
+
+
+            do i = 1, nspec
+                ! ! Global species index
+                ! ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
+                ! Initial values
+                if (param_exists('Initial '//trim(spec_name(i)))) then
+                   call param_read('Initial '//trim(spec_name(i)), tmpY)
+                   fc%SC(:,:,:,i) = tmpY
+                   if (cfg%amRoot) then
+                      print *, "Initial ", trim(spec_name(i)), tmpY
+                   end if
+                end if
+             end do
+             print*,''
+
+
+            fc%SC(:,:,:, isc_T) = T_init
+
             call fc%get_density()
             call fc%get_viscosity()
             call fc%get_diffusivity()
@@ -270,12 +266,12 @@ contains
             call ens_out%add_scalar('YN2', fc%SC(:, :, :, isc_n2))
             call ens_out%add_scalar('T', fc%SC(:, :, :, isc_T))
             call ens_out%add_scalar('YHO2', fc%SC(:, :, :, sHO2))
-            call ens_out%add_scalar('YSXC12H25', fc%SC(:, :, :, sSXC12H25))
+            ! call ens_out%add_scalar('YSXC12H25', fc%SC(:, :, :, sSXC12H25))
 
             call ens_out%add_scalar('SRC_YNC12H26', fc%SRCchem(:, :, :, isc_fuel))
             call ens_out%add_scalar('SRC_YO2', fc%SRCchem(:, :, :, isc_o2))
             call ens_out%add_scalar('SRC_YHO2', fc%SRCchem(:, :, :, sHO2))
-            call ens_out%add_scalar('SRC_YSXC12H25', fc%SRCchem(:, :, :, sSXC12H25))
+            ! call ens_out%add_scalar('SRC_YSXC12H25', fc%SRCchem(:, :, :, sSXC12H25))
             call ens_out%add_scalar('SRC_T', fc%SRCchem(:, :, :, isc_T))
 
             ! Output to ensight
