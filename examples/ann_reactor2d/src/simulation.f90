@@ -39,7 +39,7 @@ module simulation
    type(event)   :: ens_evt
 
    !> Simulation monitor file
-   type(monitor) :: mfile,cflfile!,consfile
+   type(monitor) :: mfile,cflfile
 
    !> Private work arrays
    real(WP), dimension(:,:,:,:), allocatable :: resSC,SCtmp,SC_src    !< Scalar solver arrays
@@ -897,14 +897,6 @@ contains
          call cflfile%add_column(fs%CFLv_y,'Viscous yCFL')
          call cflfile%add_column(fs%CFLv_z,'Viscous zCFL')
          call cflfile%write()
-         ! Create conservation monitor
-         ! consfile=monitor(fs%cfg%amRoot,'conservation')
-         ! call consfile%add_column(time%n,'Timestep number')
-         ! call consfile%add_column(time%t,'Time')
-         ! call consfile%add_column(sc%SCint,'SC integral')
-         ! call consfile%add_column(sc%rhoint,'RHO integral')
-         ! call consfile%add_column(sc%rhoSCint,'rhoSC integral')
-         ! call consfile%write()
       end block create_monitor
 
 
@@ -987,11 +979,8 @@ contains
 
             ! Assemble explicit residual
             do isc=1,sc%nscalar
-               resSC(:,:,:,isc)=time%dt*resSC(:,:,:,isc)-2.0_WP*sc%rho*sc%SC(:,:,:,isc)+(sc%rho+sc%rhoold)*sc%SCold(:,:,:,isc)+time%dt*sc%rho*SC_src(:,:,:,isc)
+               resSC(:,:,:,isc)=(time%dt*resSC(:,:,:,isc)+sc%rhoold*sc%SCold(:,:,:,isc))/sc%rho-2.0_WP*sc%SC(:,:,:,isc)+sc%SCold(:,:,:,isc)+time%dt*SC_src(:,:,:,isc)
             end do
-
-            ! Form implicit residual
-            call sc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
 
             ! Apply these residuals
             sc%SC=2.0_WP*sc%SC-sc%SCold+resSC
@@ -1009,7 +998,6 @@ contains
                   do i=sc%cfg%imino_,sc%cfg%imaxo_
                      call trn%get_transport(sc%SC(i,j,k,:),trnprop_tmp)
                      call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
-                     T(i,j,k)        =trnprop(1)
                      sc%rho(i,j,k)   =exp(trnprop(2))
                      fs%visc(i,j,k)  =trnprop(3)
                      sc%diff(i,j,k,:)=trnprop(4)
@@ -1037,8 +1025,19 @@ contains
             resV=time%dtmid*resV-(2.0_WP*fs%rhoV-2.0_WP*fs%rhoVold)
             resW=time%dtmid*resW-(2.0_WP*fs%rhoW-2.0_WP*fs%rhoWold)
 
-            ! Form implicit residuals
-            call fs%solve_implicit(time%dtmid,resU,resV,resW)
+            ! Divide by density to get velocity residuals
+            do k=cfg%kmin_,cfg%kmax_+1
+               do j=cfg%jmin_,cfg%jmax_+1
+                  do i=cfg%imin_,cfg%imax_+1
+                     resU(i,j,k)=resU(i,j,k)/sum(fs%itpr_x(:,i,j,k)*fs%rho(i-1:i,j,k))
+                     resV(i,j,k)=resV(i,j,k)/sum(fs%itpr_y(:,i,j,k)*fs%rho(i,j-1:j,k))
+                     resW(i,j,k)=resW(i,j,k)/sum(fs%itpr_z(:,i,j,k)*fs%rho(i,j,k-1:k))
+                  end do
+               end do
+            end do
+            call fs%cfg%sync(resU)
+            call fs%cfg%sync(resV)
+            call fs%cfg%sync(resW)
 
             ! Apply these residuals
             fs%U=2.0_WP*fs%U-fs%Uold+resU
@@ -1078,22 +1077,24 @@ contains
          call sc%get_drhodt(dt=time%dt, drhodt=resRHO)
          call fs%get_div(drhodt=resRHO)
 
-         ! Map the neural network scalars to T and Y
-         do k=sc%cfg%kmino_,sc%cfg%kmaxo_
-            do j=sc%cfg%jmino_,sc%cfg%jmaxo_
-               do i=sc%cfg%imino_,sc%cfg%imaxo_
-                  call aen%decode(sc%SC(i,j,k,:),TYS)
-                  call aen%inverse_transform_outputs(TYS,hY,nY_sub+1)
-                  T(i,j,k)=hY(1)
-                  do iY=1,n_Y
-                     Y(i,j,k,iY)=hY(iY_in_sub(iY)+1)
+         ! Output to ensight
+         if (ens_evt%occurs()) then
+            ! Map the neural network scalars to T and Y
+            do k=sc%cfg%kmino_,sc%cfg%kmaxo_
+               do j=sc%cfg%jmino_,sc%cfg%jmaxo_
+                  do i=sc%cfg%imino_,sc%cfg%imaxo_
+                     call aen%decode(sc%SC(i,j,k,:),TYS)
+                     call aen%inverse_transform_outputs(TYS,hY,nY_sub+1)
+                     T(i,j,k)=hY(1)
+                     do iY=1,n_Y
+                        Y(i,j,k,iY)=hY(iY_in_sub(iY)+1)
+                     end do
                   end do
                end do
             end do
-         end do
-
-         ! Output to ensight
-         if (ens_evt%occurs()) call ens_out%write_data(time%t)
+            ! Write
+            call ens_out%write_data(time%t)
+         end if
 
          ! Perform and output monitoring
          call fs%get_max()
@@ -1101,7 +1102,6 @@ contains
          call sc%get_int()
          call mfile%write()
          call cflfile%write()
-         ! call consfile%write()
 
       end do
 
