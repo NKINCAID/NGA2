@@ -241,6 +241,7 @@ contains
 
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
+         use geometry,        only: latbc
          use hypre_str_class, only: pcg_pfmg2
          use lowmach_class,   only: dirichlet,clipped_neumann,slip
          ! Create flow solver
@@ -249,10 +250,12 @@ contains
          call fs%add_bcond(name='jet'    ,type=dirichlet      ,face='x',dir=-1,canCorrect=.false.,locator=jet)
          call fs%add_bcond(name='coflow' ,type=dirichlet      ,face='x',dir=-1,canCorrect=.false.,locator=coflow)
          call fs%add_bcond(name='outflow',type=clipped_neumann,face='x',dir=+1,canCorrect=.true. ,locator=xp_locator)
-         call fs%add_bcond(name='yp'     ,type=slip           ,face='y',dir=+1,canCorrect=.false.,locator=yp_locator)
-         call fs%add_bcond(name='ym'     ,type=slip           ,face='y',dir=-1,canCorrect=.false.,locator=ym_locator)
-         call fs%add_bcond(name='zp'     ,type=slip           ,face='z',dir=+1,canCorrect=.false.,locator=zp_locator)
-         call fs%add_bcond(name='zm'     ,type=slip           ,face='z',dir=-1,canCorrect=.false.,locator=zm_locator)
+         if (trim(latbc).eq.'slip') then
+            call fs%add_bcond(name='yp'     ,type=slip           ,face='y',dir=+1,canCorrect=.false.,locator=yp_locator)
+            call fs%add_bcond(name='ym'     ,type=slip           ,face='y',dir=-1,canCorrect=.false.,locator=ym_locator)
+            call fs%add_bcond(name='zp'     ,type=slip           ,face='z',dir=+1,canCorrect=.false.,locator=zp_locator)
+            call fs%add_bcond(name='zm'     ,type=slip           ,face='z',dir=-1,canCorrect=.false.,locator=zm_locator)
+         end if
          ! Configure pressure solver
          ps=hypre_str(cfg=cfg,name='Pressure',method=pcg_pfmg2,nst=7)
          ps%maxlevel=18

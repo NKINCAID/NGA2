@@ -1,5 +1,6 @@
 !> Various definitions and tools for initializing NGA2 config
 module geometry
+   use string,       only: str_medium
    use config_class, only: config
    use precision,    only: WP
    implicit none
@@ -7,6 +8,9 @@ module geometry
    
    !> Single config
    type(config), public :: cfg
+
+   !> BC for the lateral faces
+   character(len=str_medium), public :: latbc
    
    public :: geometry_init
    
@@ -23,6 +27,7 @@ contains
       
       ! Create a grid from input params
       create_grid: block
+         use messager,    only: die
          use sgrid_class, only: cartesian
          integer :: i,j,k,nx,ny,nz
          real(WP) :: Lx,Ly,Lz
@@ -32,6 +37,7 @@ contains
          call param_read('Lx',Lx); call param_read('nx',nx); allocate(x(nx+1))
          call param_read('Ly',Ly); call param_read('ny',ny); allocate(y(ny+1))
          call param_read('Lz',Lz); call param_read('nz',nz); allocate(z(nz+1))
+         call param_read('Lateral BC',latbc)
          
          ! Create simple rectilinear grid
          do i=1,nx+1
@@ -45,8 +51,13 @@ contains
          end do
          
          ! General serial grid object
-         grid=sgrid(coord=cartesian,no=2,x=x,y=y,z=z,xper=.false.,yper=.false.,zper=.false.,name='dlra')
-         ! grid=sgrid(coord=cartesian,no=2,x=x,y=y,z=z,xper=.false.,yper=.true.,zper=.true.,name='dlra')
+         if (trim(latbc).eq.'slip') then
+            grid=sgrid(coord=cartesian,no=2,x=x,y=y,z=z,xper=.false.,yper=.false.,zper=.false.,name='dlra')
+         else if (trim(latbc).eq.'periodic') then
+            grid=sgrid(coord=cartesian,no=2,x=x,y=y,z=z,xper=.false.,yper=.true.,zper=.true.,name='dlra')
+         else
+            call die('[geometry_init] Wrong condition for the lateral boundaries.')
+         end if
          
       end block create_grid
       

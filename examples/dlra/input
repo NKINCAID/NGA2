@@ -9,13 +9,14 @@ nx : 256
 ny : 128
 nz : 128
 
-# Inflow definition
-Z jet    : 1
-D jet    : 0.008
-U jet    : 42.15
-Z coflow : 0.0
-D coflow : 18.2
-U coflow : 0.3
+# Boundary conditions
+Z jet      : 1
+D jet      : 0.008
+U jet      : 42.15
+Z coflow   : 0.0
+D coflow   : 18.2
+U coflow   : 0.3
+Lateral BC : slip
 
 # Combustion
 Filtering levels                     : 1
