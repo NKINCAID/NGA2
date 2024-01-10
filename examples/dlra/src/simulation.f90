@@ -43,6 +43,7 @@ module simulation
    real(WP) :: Z_jet,Z_cof
    real(WP) :: D_jet,D_cof
    real(WP) :: U_jet,U_cof
+   real(WP) :: rho_jet,rho_cof
 
    !> Integral of pressure residual
    real(WP) :: int_RP=0.0_WP
@@ -57,6 +58,9 @@ module simulation
    real(WP), dimension(:,:,:),   allocatable :: drho,ZgradMagSq,T
    real(WP), dimension(:,:,:,:), allocatable :: Y
    character(len=str_medium), dimension(:), allocatable :: Y_name
+
+   !> Time stepping
+   character(len=str_medium) :: time_stepping
 
 
 contains
@@ -246,15 +250,15 @@ contains
          use lowmach_class,   only: dirichlet,clipped_neumann,slip
          ! Create flow solver
          fs=lowmach(cfg=cfg,name='Variable density low Mach NS')
-         ! Define boundary conditions
+         ! Define BCs
          call fs%add_bcond(name='jet'    ,type=dirichlet      ,face='x',dir=-1,canCorrect=.false.,locator=jet)
          call fs%add_bcond(name='coflow' ,type=dirichlet      ,face='x',dir=-1,canCorrect=.false.,locator=coflow)
          call fs%add_bcond(name='outflow',type=clipped_neumann,face='x',dir=+1,canCorrect=.true. ,locator=xp_locator)
          if (trim(latbc).eq.'slip') then
-            call fs%add_bcond(name='yp'     ,type=slip           ,face='y',dir=+1,canCorrect=.false.,locator=yp_locator)
-            call fs%add_bcond(name='ym'     ,type=slip           ,face='y',dir=-1,canCorrect=.false.,locator=ym_locator)
-            call fs%add_bcond(name='zp'     ,type=slip           ,face='z',dir=+1,canCorrect=.false.,locator=zp_locator)
-            call fs%add_bcond(name='zm'     ,type=slip           ,face='z',dir=-1,canCorrect=.false.,locator=zm_locator)
+            call fs%add_bcond(name='yp',type=slip,face='y',dir=+1,canCorrect=.false.,locator=yp_locator)
+            call fs%add_bcond(name='ym',type=slip,face='y',dir=-1,canCorrect=.false.,locator=ym_locator)
+            call fs%add_bcond(name='zp',type=slip,face='z',dir=+1,canCorrect=.false.,locator=zp_locator)
+            call fs%add_bcond(name='zm',type=slip,face='z',dir=-1,canCorrect=.false.,locator=zm_locator)
          end if
          ! Configure pressure solver
          ps=hypre_str(cfg=cfg,name='Pressure',method=pcg_pfmg2,nst=7)
@@ -274,7 +278,7 @@ contains
          real(WP) :: diffusivity
          ! Create scalar solver
          sc=vdscalar(cfg=cfg,scheme=quick,name='MixFrac')
-         ! Define jet and coflow boundary conditions
+         ! Define BCs
          call sc%add_bcond(name='jet'   ,type=dirichlet,locator=jetsc   )
          call sc%add_bcond(name='coflow',type=dirichlet,locator=coflowsc)
          ! Outflow on the right
@@ -336,11 +340,14 @@ contains
 
       ! Initialize time tracker
       initialize_timetracker: block
+         use messager, only: die
          time=timetracker(amRoot=fs%cfg%amRoot,name='dlra')
          call param_read('Max timestep size',time%dtmax)
          call param_read('Max cfl number',time%cflmax)
          call param_read('Max time',time%tmax)
          call param_read('Sub iterations',time%itmax)
+         call param_read('Time stepping',time_stepping)
+         if ((trim(time_stepping).ne.'explicit').and.(trim(time_stepping).ne.'implicit')) call die('Time stepping must be either explicit or implicit.')
          time%dt=time%dtmax
       end block initialize_timetracker
 
@@ -393,6 +400,38 @@ contains
       end block initialize_combustion
 
 
+      ! Get the inlet data
+      get_inlet_data: block
+         use mpi_f08, only: MPI_ALLREDUCE,MPI_MAX
+         use parallel, only: MPI_REAL_WP
+         use vdscalar_class, only: bcond
+         use, intrinsic :: iso_fortran_env, only: output_unit
+         real(WP) :: myRe_jet,Re_jet,visc_jet
+         integer  :: i,j,k,ierr
+         type(bcond), pointer :: mybc
+         visc_jet=0.0_WP
+         rho_jet=0.0_WP
+         rho_cof=0.0_WP
+         myRe_jet=-1.0_WP
+         call sc%get_bcond('jet',mybc)
+         if (mybc%itr%n_.gt.0) then
+            i=mybc%itr%map(1,1); j=mybc%itr%map(2,1); k=mybc%itr%map(3,1)
+            ! Note: sc%SC(i,j,k) is 2, which is greater than 1 and thus, the following two statements give us the density and viscosity corresponding to Z=1
+            rho_jet=sc%rho(i,j,k)
+            visc_jet=fs%visc(i,j,k)
+            myRe_jet=rho_jet*U_jet*D_jet/visc_jet
+         end if
+         call sc%get_bcond('coflow',mybc)
+         if (mybc%itr%n_.gt.0) then
+            i=mybc%itr%map(1,1); j=mybc%itr%map(2,1); k=mybc%itr%map(3,1)
+            ! Note: As long as sc%SC(i,j,k) is between 0 and 1 (Z_cof<=0.5), the following statement is correct (accurate for Z_cof, but probabely not very good for Z_cof>0)
+            rho_cof=0.5_WP*(sc%rho(i,j,k)+sc%rho(i+1,j,k))
+         end if
+         call MPI_ALLREDUCE(myRe_jet,Re_jet,1,MPI_REAL_WP,MPI_MAX,cfg%comm,ierr)
+         if (cfg%amRoot) write(output_unit,'("Jet Reynolds = ",es12.5)') Re_jet
+      end block get_inlet_data
+
+
       ! Initialize our velocity field
       initialize_velocity: block
          use lowmach_class, only: bcond
@@ -400,48 +439,31 @@ contains
          type(bcond), pointer :: mybc
          ! Zero initial field
          fs%U=0.0_WP; fs%V=0.0_WP; fs%W=0.0_WP
-         ! Apply all boundary conditions
+         ! Set density from scalar
+         fs%rho=sc%rho
+         ! Form momentum
+         call fs%rho_multiply()
+         ! Apply BCs
+         call fs%apply_bcond(time%t,time%dt)
          call fs%get_bcond('jet',mybc)
          do n=1,mybc%itr%no_
             i=mybc%itr%map(1,n); j=mybc%itr%map(2,n); k=mybc%itr%map(3,n)
             fs%U(i,j,k)=U_jet
+            fs%rhoU(i,j,k)=rho_jet*U_jet
          end do
          call fs%get_bcond('coflow',mybc)
          do n=1,mybc%itr%no_
             i=mybc%itr%map(1,n); j=mybc%itr%map(2,n); k=mybc%itr%map(3,n)
             fs%U(i,j,k)=U_cof
+            fs%rhoU(i,j,k)=rho_cof*U_cof
          end do
-         ! Set density from scalar
-         fs%rho=sc%rho
-         ! Form momentum
-         call fs%rho_multiply()
-         call fs%apply_bcond(time%t,time%dt)
+         ! Get cell-centered velocities and continuity residual
          call fs%interp_vel(Ui,Vi,Wi)
          resSC=0.0_WP
          call fs%get_div(drhodt=resSC)
          ! Compute MFR through all boundary conditions
          call fs%get_mfr()
       end block initialize_velocity
-
-
-      ! Get the jet Reynolds number
-      get_Re: block
-         use mpi_f08, only: MPI_ALLREDUCE,MPI_MAX
-         use parallel, only: MPI_REAL_WP
-         use vdscalar_class, only: bcond
-         use, intrinsic :: iso_fortran_env, only: output_unit
-         real(WP) :: myRe_jet,Re_jet
-         integer  :: i,j,k,ierr
-         type(bcond), pointer :: mybc
-         myRe_jet=-1.0_WP
-         call sc%get_bcond('jet',mybc)
-         if (mybc%itr%n_.gt.0) then
-            i=mybc%itr%map(1,1); j=mybc%itr%map(2,1); k=mybc%itr%map(3,1)
-            myRe_jet=sc%rho(i,j,k)*U_jet*D_jet/fs%visc(i,j,k)
-         end if
-         call MPI_ALLREDUCE(myRe_jet,Re_jet,1,MPI_REAL_WP,MPI_MAX,cfg%comm,ierr)
-         if (cfg%amRoot) write(output_unit,'("Jet Reynolds = ",es12.5)') Re_jet
-      end block get_Re
 
 
       ! Add Ensight output
@@ -521,6 +543,7 @@ contains
    subroutine simulation_run
       use, intrinsic :: iso_fortran_env, only: output_unit
       implicit none
+      integer :: i,j,k
 
 
       ! Perform time integration
@@ -573,18 +596,24 @@ contains
             ! Assemble explicit residual
             resSC=time%dt*resSC-(2.0_WP*sc%rho*sc%SC-(sc%rho+sc%rhoold)*sc%SCold)
 
-            ! Form implicit residual
-            call sc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            ! Get the residual
+            if (time_stepping.eq.'implicit') then
+               ! Form implicit residual
+               call sc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+            else
+               ! Divide by density
+               resSC=resSC/sc%rho
+            end if
 
             ! Apply these residuals
             sc%SC=2.0_WP*sc%SC-sc%SCold+resSC
 
-            ! Apply all boundary conditions on the resulting field
+            ! Apply BCs on the resulting field
             call sc%apply_bcond(time%t,time%dt)
             dirichlet_scalar: block
                use vdscalar_class, only: bcond
                type(bcond), pointer :: mybc
-               integer :: n,i,j,k
+               integer :: n
                call sc%get_bcond('jet',mybc)
                do n=1,mybc%itr%no_
                   i=mybc%itr%map(1,n); j=mybc%itr%map(2,n); k=mybc%itr%map(3,n)
@@ -634,33 +663,52 @@ contains
             resV=time%dtmid*resV-(2.0_WP*fs%rhoV-2.0_WP*fs%rhoVold)
             resW=time%dtmid*resW-(2.0_WP*fs%rhoW-2.0_WP*fs%rhoWold)
 
-            ! Form implicit residuals
-            call fs%solve_implicit(time%dtmid,resU,resV,resW)
+            ! Get the residual
+            if (time_stepping.eq.'implicit') then
+               ! Form implicit residuals
+               call fs%solve_implicit(time%dtmid,resU,resV,resW)
+            else
+               ! Divide by density
+               do k=cfg%kmin_,cfg%kmax_+1
+                  do j=cfg%jmin_,cfg%jmax_+1
+                     do i=cfg%imin_,cfg%imax_+1
+                        resU(i,j,k)=resU(i,j,k)/sum(fs%itpr_x(:,i,j,k)*fs%rho(i-1:i,j,k))
+                        resV(i,j,k)=resV(i,j,k)/sum(fs%itpr_y(:,i,j,k)*fs%rho(i,j-1:j,k))
+                        resW(i,j,k)=resW(i,j,k)/sum(fs%itpr_z(:,i,j,k)*fs%rho(i,j,k-1:k))
+                     end do
+                  end do
+               end do
+               call fs%cfg%sync(resU)
+               call fs%cfg%sync(resV)
+               call fs%cfg%sync(resW)
+            end if
 
             ! Apply these residuals
             fs%U=2.0_WP*fs%U-fs%Uold+resU
             fs%V=2.0_WP*fs%V-fs%Vold+resV
             fs%W=2.0_WP*fs%W-fs%Wold+resW
 
-            ! Apply boundary conditions
-            call fs%apply_bcond(time%tmid,time%dtmid)
+            ! Update momentum
             call fs%rho_multiply()
+
+            ! Apply BCs
             call fs%apply_bcond(time%tmid,time%dtmid)
             dirichlet_velocity: block
                use lowmach_class, only: bcond
                type(bcond), pointer :: mybc
-               integer :: n,i,j,k
+               integer :: n
                call fs%get_bcond('jet',mybc)
                do n=1,mybc%itr%no_
                   i=mybc%itr%map(1,n); j=mybc%itr%map(2,n); k=mybc%itr%map(3,n)
                   fs%U(i,j,k)=U_jet
+                  fs%rhoU(i,j,k)=rho_jet*U_jet
                end do
                call fs%get_bcond('coflow',mybc)
                do n=1,mybc%itr%no_
                   i=mybc%itr%map(1,n); j=mybc%itr%map(2,n); k=mybc%itr%map(3,n)
                   fs%U(i,j,k)=U_cof
+                  fs%rhoU(i,j,k)=rho_cof*U_cof
                end do
-               call fs%rho_multiply()
             end block dirichlet_velocity
 
             ! Solve Poisson equation
