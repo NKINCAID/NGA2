@@ -778,6 +778,10 @@ contains
       allocate (tmp11(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
       allocate (tmp12(this%cfg%imino_:this%cfg%imaxo_, this%cfg%jmino_:this%cfg%jmaxo_, this%cfg%kmino_:this%cfg%kmaxo_))
 
+      DFX = 0.0_WP
+      DFY = 0.0_WP
+      DFZ = 0.0_WP
+
       ! Get Wmix and Cpmix fields
       do k = this%cfg%kmino_, this%cfg%kmaxo_
          do j = this%cfg%jmino_, this%cfg%jmaxo_
