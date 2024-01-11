@@ -2,12 +2,12 @@
 Partition : 8 1 1
 
 # Mesh definition
-Lx : 0.01 # 0.08
-Ly : 0.02 # 0.04
-Lz : 0.02 # 0.04
-nx : 32 # 256
-ny : 64 # 128
-nz : 64 # 128
+Lx : 0.02
+Ly : 0.02
+Lz : 0.02
+nx : 64 # 128 # 200
+ny : 64 # 128 # 200
+nz : 64 # 128 # 200
 
 # Boundary conditions
 Z jet      : 1
@@ -19,7 +19,7 @@ U coflow   : 0.3
 Lateral BC : periodic
 
 # Combustion
-Filtering levels                     : 1
+Filtering levels                     : 1 # 2
 Density limiter                      : true
 Chemtable file name                  : chemtable
 Create chemtable                     : false
@@ -37,14 +37,18 @@ SGS Schmidt number : 1
 
 # Time integration
 Time stepping     : explicit
-Max timestep size : 5e-6
-Max cfl number    : 0.8
+Max timestep size : 7e-6 # 3.5e-6 # 2e-6
+Max cfl number    : 0.9
 Sub iterations    : 3
-Max time          : 5e-3
+Max time          : 3e-4
 
 # Pressure solver
-Pressure tolerance : 1e-11
+Pressure tolerance : 1e-10
 Pressure iteration : 50
+
+# Implicit velocity solver
+Implicit tolerance : 1e-8
+Implicit iteration : 50
 
 # Ensight output
 Ensight output period  : 1e-5

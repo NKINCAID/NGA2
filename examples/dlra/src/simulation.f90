@@ -16,9 +16,9 @@ module simulation
    implicit none
    private
 
-   !> Single low Mach flow solver and scalar solver and corresponding time tracker
-   type(hypre_str),   public :: ps
-   type(ddadi),       public :: vs,ss
+   !> Single phase low Mach flow solver and scalar solver and corresponding time tracker
+   type(hypre_str),   public :: vs,ps
+   type(ddadi),       public :: ss
    type(lowmach),     public :: fs
    type(vdscalar),    public :: sc    
    type(timetracker), public :: time
@@ -39,7 +39,7 @@ module simulation
    real(WP), dimension(:,:,:),     allocatable :: Ui,Vi,Wi
    real(WP), dimension(:,:,:,:,:), allocatable :: gradU
 
-   !> Inlet
+   !> Inlet conditions
    real(WP) :: Z_jet,Z_cof
    real(WP) :: D_jet,D_cof
    real(WP) :: U_jet,U_cof
@@ -246,7 +246,7 @@ contains
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
          use geometry,        only: latbc
-         use hypre_str_class, only: pcg_pfmg2
+         use hypre_str_class, only: pcg_pfmg2,gmres_pfmg
          use lowmach_class,   only: dirichlet,clipped_neumann,slip
          ! Create flow solver
          fs=lowmach(cfg=cfg,name='Variable density low Mach NS')
@@ -266,7 +266,9 @@ contains
          call param_read('Pressure iteration',ps%maxit)
          call param_read('Pressure tolerance',ps%rcvg)
          ! Configure implicit velocity solver
-         vs=ddadi(cfg=cfg,name='Velocity',nst=7)
+         vs=hypre_str(cfg=cfg,name='Velocity',method=gmres_pfmg,nst=7)
+         call param_read('Implicit iteration',vs%maxit)
+         call param_read('Implicit tolerance',vs%rcvg)
          ! Setup the solver
          call fs%setup(pressure_solver=ps,implicit_solver=vs)
       end block create_velocity_solver
@@ -401,7 +403,7 @@ contains
 
 
       ! Get the inlet data
-      get_inlet_data: block
+      inlet_data: block
          use mpi_f08, only: MPI_ALLREDUCE,MPI_MAX
          use parallel, only: MPI_REAL_WP
          use vdscalar_class, only: bcond
@@ -429,7 +431,7 @@ contains
          end if
          call MPI_ALLREDUCE(myRe_jet,Re_jet,1,MPI_REAL_WP,MPI_MAX,cfg%comm,ierr)
          if (cfg%amRoot) write(output_unit,'("Jet Reynolds = ",es12.5)') Re_jet
-      end block get_inlet_data
+      end block inlet_data
 
 
       ! Initialize our velocity field
@@ -480,6 +482,9 @@ contains
          call ens_out%add_scalar('density'    ,sc%rho)
          call ens_out%add_scalar('mixfrac'    ,sc%SC)
          call ens_out%add_scalar('temperature',T)
+         call ens_out%add_scalar('ZgradMagSq',ZgradMagSq)
+         call ens_out%add_scalar('chi',flm%chi)
+         call ens_out%add_scalar('Zvar',flm%Zvar)
          do iY=1,n_Y
             call ens_out%add_scalar(Y_name(iY),Y(:,:,:,iY))
          end do
@@ -564,12 +569,14 @@ contains
          fs%Vold=fs%V; fs%rhoVold=fs%rhoV
          fs%Wold=fs%W; fs%rhoWold=fs%rhoW
 
-         ! Combustion pre-step
+         ! Get transport properties and chemtable inputs
          call flm%chmtbl%lookup('viscosity',fs%visc,sc%SC,flm%Zvar,flm%chi,ncells)
          call flm%chmtbl%lookup('diffusivity',sc%diff,sc%SC,flm%Zvar,flm%chi,ncells)
          ZgradMagSq=sc%grad_mag_sq(itpr_x=fs%itpr_x,itpr_y=fs%itpr_y,itpr_z=fs%itpr_z)
          call flm%get_Zvar(delta=sgs%delta,ZgradMagSq=ZgradMagSq,Z=sc%SC)
+         ! Not sure which of the following is good
          call flm%get_chi(mueff=fs%visc,rho=sc%rho,ZgradMagSq=ZgradMagSq)
+         ! call flm%get_chi(mueff=sc%diff,rho=sc%rho,ZgradMagSq=ZgradMagSq)
          
          ! Turbulence modeling
          sgs_modeling: block
@@ -754,6 +761,7 @@ contains
          ! Perform and output monitoring
          call fs%get_max()
          call sc%get_max()
+         call sc%rho_multiply()
          call sc%get_int()
          call mfile%write()
          call cflfile%write()

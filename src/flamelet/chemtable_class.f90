@@ -6,11 +6,7 @@ module chemtable_class
    use messager,     only: die
    implicit none
    private
-
-   ! Store the values for interpolation for speedup in newton
-   integer  :: i1,i2,i3
-   real(WP) :: w11,w12,w21,w22,w31,w32
-
+   
    ! Expose type/constructor/methods
    public :: chemtable
 
@@ -47,8 +43,6 @@ module chemtable_class
    contains
       procedure :: lookup
       procedure :: lookup_rho
-      procedure :: lookup_rho_val
-      procedure :: lookup_rho_der
       procedure :: lookup_max
       procedure :: lookup_min
       procedure :: get_var_ind
@@ -131,22 +125,21 @@ contains
    !< Look in the chemtable for the variable named 'tag'
    subroutine lookup(this,tag,R,A1,A2,A3,n)
       implicit none
-      class(chemtable), intent(inout) :: this
-      character(len=*), intent(in) :: tag
-      real(WP), dimension(n), intent(in)  :: A1,A2,A3
-      real(WP), dimension(n), intent(out) :: R
-      integer, intent(in) :: n
-      integer :: var_ind,i,j
-
+      class(chemtable),       intent(inout) :: this
+      character(len=*),       intent(in)    :: tag
+      real(WP), dimension(n), intent(in)    :: A1,A2,A3
+      real(WP), dimension(n), intent(out)   :: R
+      integer, intent(in)                   :: n
+      integer  :: var_ind,i,j
+      integer  :: i1,i2,i3
+      real(WP) :: w11,w12,w21,w22,w31,w32
       ! If density call another routine
       if (trim(tag).eq.'density') then
          call this%lookup_rho(R,A1,A2,A3,n)
          return
       end if
-
       ! Get the index of the variable
       var_ind=this%get_var_ind(tag)
-
       ! Trilinear interpolation
       do i=1,n
          ! First direction
@@ -166,7 +159,6 @@ contains
             w11=(this%x1(i1+1)-A1(i))/(this%x1(i1+1)-this%x1(i1))
          end if
          w12=1.0_WP-w11
-
          ! Second direction
          if (A2(i).lt.this%x2min) then
             i2=1
@@ -184,7 +176,6 @@ contains
             w21=(this%x2(i2+1)-A2(i))/(this%x2(i2+1)-this%x2(i2))
          end if
          w22=1.0_WP-w21
-
          ! Third direction
          if (A3(i).lt.this%x3min) then
             i3=1
@@ -213,12 +204,13 @@ contains
    !< Look in the chemtable for the density with different interpolation than for other variables
    subroutine lookup_rho(this,R,A1,A2,A3,n)
       implicit none
-      class(chemtable), intent(inout) :: this
+      class(chemtable),       intent(in)  :: this
       real(WP), dimension(n), intent(in)  :: A1,A2,A3
       real(WP), dimension(n), intent(out) :: R
-      integer, intent(in) :: n
-      integer :: i,j
-
+      integer, intent(in)                 :: n
+      integer  :: i,j
+      integer  :: i1,i2,i3
+      real(WP) :: w11,w12,w21,w22,w31,w32
       ! Trilinear interpolation
       do i=1,n
          ! First direction
@@ -238,7 +230,6 @@ contains
             w11=(this%x1(i1+1)-A1(i))/(this%x1(i1+1)-this%x1(i1))
          end if
          w12=1.0_WP-w11
-
          ! Second direction
          if (A2(i).lt.this%x2min) then
             i2=1
@@ -256,7 +247,6 @@ contains
             w21=(this%x2(i2+1)-A2(i))/(this%x2(i2+1)-this%x2(i2))
          end if
          w22=1.0_WP-w21
-
          ! Third direction
          if (A3(i).lt.this%x3min) then
             i3=1
@@ -274,7 +264,6 @@ contains
             w31=(this%x3(i3+1)-A3(i))/(this%x3(i3+1)-this%x3(i3))
          end if
          w32=1.0_WP-w31
-
          ! Interpolation of 1/rho
          R(i)=&
             w31*(w21*(w11/this%table(i1,i2,i3  ,this%index_rho)+w12/this%table(i1+1,i2,i3  ,this%index_rho))+w22*(w11/this%table(i1,i2+1,i3  ,this%index_rho)+w12/this%table(i1+1,i2+1,i3  ,this%index_rho)))+&
@@ -284,117 +273,6 @@ contains
    end subroutine lookup_rho
 
 
-   function lookup_rho_val(this,A1,A2,A3) result(rho_val)
-      implicit none
-      class(chemtable), intent(in) :: this
-      real(WP), intent(in) :: A1,A2,A3
-      real(WP) :: rho_val
-      integer :: var_ind,j
-
-      ! The variable is rho
-      var_ind=this%index_rho
-
-      ! First direction
-      if (A1.lt.this%x1min) then
-         i1=1
-         w11=1.0_WP
-      else if (A1.ge.this%x1max) then
-         i1=this%n1-1
-         w11=0.0_WP
-      else
-         loop1: do j=1,this%n1-1
-            if (A1.lt.this%x1(j+1)) then
-               i1=j
-               exit loop1
-            end if
-         end do loop1
-         w11=(this%x1(i1+1)-A1)/(this%x1(i1+1)-this%x1(i1))
-      end if
-      w12=1.0_WP-w11
-
-      ! Second direction
-      if (A2.lt.this%x2min) then
-         i2=1
-         w21=1.0_WP
-      else if (A2.ge.this%x2max) then
-         i2=this%n2-1
-         w21=0.0_WP
-      else
-         loop2: do j=1,this%n2-1
-            if (A2.lt.this%x2(j+1)) then
-               i2=j
-               exit loop2
-            end if
-         end do loop2
-         w21=(this%x2(i2+1)-A2)/(this%x2(i2+1)-this%x2(i2))
-      end if
-      w22=1.0_WP-w21
-
-      ! Third direction
-      if (A3.lt.this%x3min) then
-         i3=1
-         w31=1.0_WP
-      else if (A3.ge.this%x3max) then
-         i3=this%n3-1
-         w31=0.0_WP
-      else
-         loop3: do j=1,this%n3-1
-            if (A3.lt.this%x3(j+1)) then
-               i3=j
-               exit loop3
-            end if
-         end do loop3
-         w31=(this%x3(i3+1)-A3)/(this%x3(i3+1)-this%x3(i3))
-      end if
-      w32=1.0_WP-w31
-
-      ! Interpolation
-      rho_val=1.0_WP/(&
-         w31*(w21*(w11/this%table(i1,i2,i3  ,var_ind)+w12/this%table(i1+1,i2,i3  ,var_ind))+w22*(w11/this%table(i1,i2+1,i3  ,var_ind)+w12/this%table(i1+1,i2+1,i3,var_ind)))+&
-         w32*(w21*(w11/this%table(i1,i2,i3+1,var_ind)+w12/this%table(i1+1,i2,i3+1,var_ind))+w22*(w11/this%table(i1,i2+1,i3+1,var_ind)+w12/this%table(i1+1,i2+1,i3+1,var_ind))))
-   end function lookup_rho_val
-
-
-   !< Look in the chemtable for the density
-   function lookup_rho_der(this,dir) result(rho_der_val)
-      implicit none
-      class(chemtable), intent(in) :: this
-      integer, intent(in) :: dir
-      real(WP) :: rho_der_val
-      integer :: var_ind,j
-      real(WP) :: c11,c12,c21,c22,c31,c32
-
-      ! Get the index of the variable
-      var_ind=this%index_rho
-
-      ! Compute the coefficients
-      c11=w11
-      c12=w12
-      c21=w21
-      c22=w22
-      c31=w31
-      c32=w32
-
-      ! Update the coefficients to account for derivatives
-      select case(dir)
-       case (1)
-         c12=1.0_WP/(this%x1(i1+1)-this%x1(i1))
-         c11=-c12
-       case (2)
-         c22=1.0_WP/(this%x2(i2+1)-this%x2(i2))
-         c21=-c22
-       case (3)
-         c32=1.0_WP/(this%x3(i3+1)-this%x3(i3))
-         c31=-c32
-      end select
-
-      ! Compute derivative in the direction 'dir' and interpolation in the two others
-      rho_der_val= &
-         c31*(c21*(c11*this%table(i1,i2,i3  ,var_ind)+c12*this%table(i1+1,i2,i3  ,var_ind))+c22*(c11*this%table(i1,i2+1,i3  ,var_ind)+c12*this%table(i1+1,i2+1,i3  ,var_ind)))+&
-         c32*(c21*(c11*this%table(i1,i2,i3+1,var_ind)+c12*this%table(i1+1,i2,i3+1,var_ind))+c22*(c11*this%table(i1,i2+1,i3+1,var_ind)+c12*this%table(i1+1,i2+1,i3+1,var_ind)))
-   end function lookup_rho_der
-
-
    !< Find the maximum of a variable in the chemtable
    subroutine lookup_max(this,tag,R)
       implicit none
@@ -402,10 +280,8 @@ contains
       character(len=*), intent(in) :: tag
       real(WP), intent(out) :: R
       integer :: var_ind
-
       ! Get the index of the variable
       var_ind=this%get_var_ind(tag)
-
       ! Return the max
       R=maxval(this%table(:,:,:,var_ind))
    end subroutine lookup_max
@@ -418,13 +294,12 @@ contains
       character(len=*), intent(in) :: tag
       real(WP), intent(out) :: R
       integer :: var_ind
-
       ! Get the index of the variable
       var_ind=this%get_var_ind(tag)
-
       ! Return the min
       R=minval(this%table(:,:,:,var_ind))
    end subroutine lookup_min
+
 
    !< Get the index of a variable
    function get_var_ind(this,tag) result(var_ind)
@@ -432,7 +307,6 @@ contains
       class(chemtable), intent(inout) :: this
       character(len=*), intent(in) :: tag
       integer :: var_ind
-
       ! Get the index of the variable
       do var_ind=1,this%nvar
          if (trim(this%chem_name(var_ind)).eq.trim(tag)) exit

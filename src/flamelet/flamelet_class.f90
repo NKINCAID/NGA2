@@ -42,6 +42,7 @@ module flamelet_class
       procedure constructor
    end interface flamelet
 
+
 contains
 
 
@@ -86,7 +87,6 @@ contains
       real(WP), dimension(this%cfg%imino_:this%cfg%imaxo_,this%cfg%jmino_:this%cfg%jmaxo_,this%cfg%kmino_:this%cfg%kmaxo_), intent(in) :: ZgradMagSq,Z
       real(WP), parameter :: Cz=0.15_WP**2/1.0_WP
       integer :: i,j,k
-      
       do k=this%cfg%kmin_,this%cfg%kmax_
          do j=this%cfg%jmin_,this%cfg%jmax_
             do i=this%cfg%imin_,this%cfg%imax_
@@ -97,7 +97,7 @@ contains
       ! Sync it
       call this%cfg%sync(this%Zvar)
       ! Clip the computed Variance
-      this%Zvar=max(0.0_WP,min(Z*(1.0_WP-Z),this%Zvar))
+      ! this%Zvar=max(0.0_WP,min(Z*(1.0_WP-Z),this%Zvar))
    end subroutine get_Zvar
 
 
@@ -106,7 +106,6 @@ contains
       real(WP), dimension(this%cfg%imino_:this%cfg%imaxo_,this%cfg%jmino_:this%cfg%jmaxo_,this%cfg%kmino_:this%cfg%kmaxo_), intent(in) :: mueff,rho,ZgradMagSq
       real(WP), parameter :: Cchi=2.0_WP
       integer :: i,j,k
-
       do k=this%cfg%kmin_,this%cfg%kmax_
          do j=this%cfg%jmin_,this%cfg%jmax_
             do i=this%cfg%imin_,this%cfg%imax_
@@ -124,7 +123,6 @@ contains
       use, intrinsic :: iso_fortran_env, only: output_unit
       implicit none
       class(flamelet), intent(in) :: this
-      
       ! Output
       if (this%cfg%amRoot) then
          write(output_unit,'("Flamelet model [",a,"] for config [",a,"]")') trim(this%name),trim(this%cfg%name)
