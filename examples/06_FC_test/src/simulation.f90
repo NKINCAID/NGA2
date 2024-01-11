@@ -1,6 +1,7 @@
 !> Various definitions and tools for running an NGA2 simulation
 module simulation
    use precision, only: WP
+   use string, only: str_medium
    use geometry, only: cfg, Lx, Ly, Lz
    use ddadi_class, only: ddadi
    use hypre_str_class, only: hypre_str
@@ -63,6 +64,9 @@ module simulation
    real(WP) :: tmp_sc_min, tmp_sc_max
 
    real(WP) :: t1, t2, t3, t4, t5, t6, t7
+
+   !> Time stepping
+   character(len=str_medium) :: time_stepping
 
 contains
 
@@ -433,17 +437,18 @@ contains
          allocate (tmp_sc(fc%cfg%imin:fc%cfg%imax, fc%cfg%jmin:fc%cfg%jmax, fc%cfg%kmin:fc%cfg%kmax))
       end block allocate_work_arrays
 
-      ! Initialize time tracker with 2 subiterations
+      ! Initialize time tracker
       initialize_timetracker: block
-         time = timetracker(amRoot=fs%cfg%amRoot)
+         use messager, only: die
+         time = timetracker(amRoot=fs%cfg%amRoot,name='FC_test')
          call param_read('Max timestep size', time%dtmax)
          call param_read('Max cfl number', time%cflmax)
          call param_read('Max time', time%tmax)
          call param_read('Max iterations', time%nmax)
          call param_read('Sub-iterations', time%itmax)
-
+         call param_read('Time stepping',time_stepping)
+         if ((trim(time_stepping).ne.'explicit').and.(trim(time_stepping).ne.'implicit')) call die('Time stepping must be either explicit or implicit.')
          time%dt = time%dtmax
-         time%itmax = 5
       end block initialize_timetracker
 
       ! Initialize our mixture fraction field
@@ -518,7 +523,7 @@ contains
          ! print *, maxval(fc%visc), minval(fc%visc)
 
          call fc%get_max()
-         print *, fc%visc_min, fc%visc_max
+         if (cfg%amRoot) print *, fc%visc_min, fc%visc_max
       end block initialize_fc
 
       ! Initialize our velocity field
@@ -548,7 +553,7 @@ contains
       ! Add Ensight output
       create_ensight: block
          ! Create Ensight output from cfg
-         ens_out = ensight(cfg=cfg, name='vdjet')
+         ens_out = ensight(cfg=cfg, name='FC_test')
          ! Create event for Ensight output
          ens_evt = event(time=time, name='Ensight output')
          call param_read('Ensight output period', ens_evt%tper)
@@ -640,6 +645,7 @@ contains
    !> Perform an NGA2 simulation
    subroutine simulation_run
       implicit none
+      integer :: i,j,k
 
       ! Perform time integration
       do while (.not. time%done())
@@ -674,7 +680,6 @@ contains
             scalar_solver: block
                use messager, only: die
                integer :: nsc
-               integer :: i, j, k
 
                call fc%metric_reset()
 
@@ -729,9 +734,17 @@ contains
                   resSC(:, :, :, nsc) = time%dt*resSC(:, :, :, nsc) - 2.0_WP*fc%rho*fc%SC(:, :, :, nsc) + (fc%rho + fc%rhoold)*fc%SCold(:, :, :, nsc) + fc%rho*fc%SRCchem(:, :, :, nsc) + fc%SRC(:, :, :, nsc)
                end do
                !    resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho * fc%SRCchem(:,:,:,nsc)
-               ! Form implicit residual
-               call fc%solve_implicit(time%dt, resSC, fs%rhoU, fs%rhoV, fs%rhoW)
-               ! Re-apply Dirichlet BCs
+               ! Get the residual
+               if (time_stepping.eq.'implicit') then
+                  ! Form implicit residual
+                  call fc%solve_implicit(time%dt,resSC,fs%rhoU,fs%rhoV,fs%rhoW)
+               else
+                  ! Divide by density
+                  do nsc=1,fc%nscalar
+                     resSC(:,:,:,nsc)=resSC(:,:,:,nsc)/fc%rho
+                  end do
+               end if
+               ! Apply these residuals
                fc%SC = 2.0_WP*fc%SC - fc%SCold + resSC
                ! Apply all boundary conditions on the resulting field
                call fc%apply_bcond(time%t, time%dt)
@@ -777,8 +790,25 @@ contains
             resV = time%dtmid*resV - (2.0_WP*fs%rhoV - 2.0_WP*fs%rhoVold)
             resW = time%dtmid*resW - (2.0_WP*fs%rhoW - 2.0_WP*fs%rhoWold)
 
-            ! Form implicit residuals
-            call fs%solve_implicit(time%dtmid, resU, resV, resW)
+            ! Get the residual
+            if (time_stepping.eq.'implicit') then
+               ! Form implicit residuals
+               call fs%solve_implicit(time%dtmid,resU,resV,resW)
+            else
+               ! Divide by density
+               do k=cfg%kmin_,cfg%kmax_+1
+                  do j=cfg%jmin_,cfg%jmax_+1
+                     do i=cfg%imin_,cfg%imax_+1
+                        resU(i,j,k)=resU(i,j,k)/sum(fs%itpr_x(:,i,j,k)*fs%rho(i-1:i,j,k))
+                        resV(i,j,k)=resV(i,j,k)/sum(fs%itpr_y(:,i,j,k)*fs%rho(i,j-1:j,k))
+                        resW(i,j,k)=resW(i,j,k)/sum(fs%itpr_z(:,i,j,k)*fs%rho(i,j,k-1:k))
+                     end do
+                  end do
+               end do
+               call fs%cfg%sync(resU)
+               call fs%cfg%sync(resV)
+               call fs%cfg%sync(resW)
+            end if
 
             ! Apply these residuals
             fs%U = 2.0_WP*fs%U - fs%Uold + resU

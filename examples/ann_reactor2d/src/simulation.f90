@@ -3,7 +3,6 @@ module simulation
    use precision,           only: WP
    use string,              only: str_medium
    use geometry,            only: cfg,Lx
-   use ddadi_class,         only: ddadi
    use hypre_str_class,     only: hypre_str
    use lowmach_class,       only: lowmach
    use multivdscalar_class, only: multivdscalar
@@ -20,7 +19,6 @@ module simulation
 
    !> Single phase low Mach flow solver, scalar solver, and corresponding time tracker
    type(hypre_str),     public :: ps
-   type(ddadi),         public :: vs,ss
    type(lowmach),       public :: fs
    type(multivdscalar), public :: sc
    type(timetracker),   public :: time
@@ -554,10 +552,8 @@ contains
          ps%maxlevel=18
          call param_read('Pressure iteration',ps%maxit)
          call param_read('Pressure tolerance',ps%rcvg)
-         ! Configure implicit velocity solver
-         vs=ddadi(cfg=cfg,name='Velocity',nst=7)
-         ! Setup the solver
-         call fs%setup(pressure_solver=ps,implicit_solver=vs)
+         ! Setup the flow solver
+         call fs%setup(pressure_solver=ps)
       end block create_velocity_solver
 
 
@@ -593,10 +589,8 @@ contains
          call sc%add_bcond(name='yp_outflow',type=neumann,locator=yp_locator_sc,dir='+y')
          call sc%add_bcond(name='xm_outflow',type=neumann,locator=xm_locator_sc,dir='-x')
          call sc%add_bcond(name='xp_outflow',type=neumann,locator=xp_locator_sc,dir='+x')
-         ! Configure implicit scalar solver
-         ss=ddadi(cfg=cfg,name='Scalar',nst=13)
          ! Setup the solver
-         call sc%setup(implicit_solver=ss)
+         call sc%setup()
       end block create_scalar_solver
 
 
