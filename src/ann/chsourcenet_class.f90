@@ -50,7 +50,8 @@ contains
       integer :: ivector,imatrix
 
       ! Construct the parent object
-      self%multimatrix=multimatrix(cfg=cfg,fdata=fdata,name=name)
+      self%multimatrix=multimatrix(cfg=cfg,fdata='networks/'//fdata,name=name)
+
       ! Set the vector indices
       do ivector=1,self%nvector
          select case (trim(self%vectors(ivector)%name))

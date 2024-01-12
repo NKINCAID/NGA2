@@ -69,7 +69,7 @@ contains
 
       ! Initialize time tracker
       initialize_timetracker: block
-         time=timetracker(amRoot=cfg%amRoot)
+         time=timetracker(amRoot=cfg%amRoot,name='homogeneous_reactor_ann')
          call param_read('Max timestep size',time%dtmax)
          call param_read('Max time',time%tmax)
          time%dt=time%dtmax
@@ -167,7 +167,7 @@ contains
          postprocess_ann: block
             integer :: ispec
             call aen%decode(Z,TYS)
-            call aen%inverse_transform_outputs(TYS(1:nY_sub+1),hY)
+            call aen%inverse_transform_outputs(TYS,hY,nY_sub+1)
             T=hY(1)
             do ispec=1,nY_sub
                Y(int(aen%vectors(aen%ivec_spec_inds)%vector(ispec)))=hY(ispec+1)

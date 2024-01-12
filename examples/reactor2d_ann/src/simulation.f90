@@ -628,7 +628,7 @@ contains
 
       ! Initialize time tracker with 2 subiterations
       initialize_timetracker: block
-         time=timetracker(amRoot=fs%cfg%amRoot,name='ann_reactor2d')
+         time=timetracker(amRoot=fs%cfg%amRoot,name='reactor2d_ann')
          call param_read('Max timestep size',time%dtmax)
          call param_read('Max cfl number',time%cflmax)
          call param_read('Max time',time%tmax)
@@ -838,7 +838,7 @@ contains
       ! Add Ensight output
       create_ensight: block
          ! Create Ensight output from cfg
-         ens_out=ensight(cfg=cfg,name='ann_reactor2d')
+         ens_out=ensight(cfg=cfg,name='reactor2d_ann')
          ! Create event for Ensight output
          ens_evt=event(time=time,name='Ensight output')
          call param_read('Ensight output period',ens_evt%tper)
