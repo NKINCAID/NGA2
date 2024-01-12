@@ -9,7 +9,7 @@ from matplotlib.lines import Line2D
 
 
 
-file =  "monitor/simulation"
+file =  "monitor/dodecane"
 with open(file, 'r') as f:
     lines = f.readlines()
 
@@ -27,11 +27,26 @@ time_array = data[:,names.index('Time')]
 T_array = data[:,names.index('Tmax')]
 P_array = data[:,names.index("Pthermo")]
 
-# gas = ct.Solution('cti/YAO_reduced.cti')
-# gas.set_equivalence_ratio(1.0, "NXC12H26", "O2:1.0,N2:3.76")
+file =  "monitor/simulation"
+with open(file, 'r') as f:
+    lines = f.readlines()
 
-gas = ct.Solution('cti/reducedS152R621_0.cti')
-gas.set_equivalence_ratio(1.0, "XC12H26:0.8649, HMN:0.1351", "O2:1.0,N2:3.76")
+names_atj = lines[0].split()
+lines.pop(0)
+lines.pop(0)
+
+data_atj = []
+for line in lines:
+    split_line = line.split()
+    data_atj.append([float(val) for val in split_line])
+data_atj = np.array(data_atj)
+
+time_array_atj = data_atj[:,names.index('Time')]
+T_array_atj = data_atj[:,names.index('Tmax')]
+P_array_atj = data_atj[:,names.index("Pthermo")]
+
+gas = ct.Solution('cti/YAO_reduced.cti')
+gas.set_equivalence_ratio(1.0, "NXC12H26", "O2:1.0,N2:3.76")
 
 gas.TP = 1000.0, 3.4e6
 
@@ -41,16 +56,12 @@ for i,spec in enumerate(gas.species_names):
     if gas.Y[i] > 1.0e-10: 
         print("Initial {:10}    :    {:.7e}".format(spec, gas.Y[i]))
 print()
-
-
-r = ct.IdealGasConstPressureReactor(gas)
-
+r = ct.IdealGasReactor(gas)
 
 sim = ct.ReactorNet([r])
 
 states = ct.SolutionArray(gas, extra='t')
 states.append(r.thermo.state, t=0.0)
-
 time = 0.0
 dt = 1.0e-6
 
@@ -60,12 +71,36 @@ for i in range(1,1000):
 
     states.append(r.thermo.state, t=time)
 
+gas2 = ct.Solution('cti/reducedS152R621_0.cti')
+gas2.set_equivalence_ratio(1.0, "XC12H26:0.8649, HMN:0.1351", "O2:1.0,N2:3.76")
+
+gas2.TP = 1000.0, 3.4e6
+
+print()
+print("Initial {:10}    :    {:.7e}".format("enthalpy", gas2.enthalpy_mass))
+
+r = ct.IdealGasReactor(gas2)
+
+sim = ct.ReactorNet([r])
+
+states2 = ct.SolutionArray(gas2, extra='t')
+states2.append(r.thermo.state, t=0.0)
+
+time = 0.0
+dt = 1.0e-6
+
+for i in range(1,1000):
+    sim.advance(time + dt)
+    time += dt
+
+    states2.append(r.thermo.state, t=time)
+
 fig, ax = plt.subplots(1, 1, figsize=(8, 6))
 ax.plot(
     states.t * 1000,
     states.T,
     lw=lw,
-    label="Cantera",
+    label="Cantera - Yao",
     color=c[0],
 )
 
@@ -74,14 +109,31 @@ ax.plot(
     T_array,
     lw=lw,
     ls="--",
-    label="NGA2",
+    label="NGA2 - Yao",
+    color=c[0],
+)
+
+ax.plot(
+    states2.t * 1000,
+    states2.T,
+    lw=lw,
+    label="Cantera - ATJ",
+    color=c[1],
+)
+
+ax.plot(
+    time_array_atj  * 1000,
+    T_array_atj,
+    lw=lw,
+    ls="--",
+    label="NGA2 - ATJ",
     color=c[1],
 )
 
 ax.set(
     xlabel="Time [ms]",
     ylabel="Temperature [K]",
-    ylim=[650, 3100],
+    ylim=[650, 3300],
 )
 ax.grid()
 
@@ -90,7 +142,7 @@ ax.legend(frameon=False, loc="lower right")
 plt.title(r"Constant Volume Reactor")
 
 plt.tight_layout()
-plt.savefig("temperature.png")
+plt.savefig("figs/temperature.png")
 
 plt.show()
 # plt.savefig("f.png")

@@ -393,7 +393,7 @@ contains
 
                     !    resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho * fc%SRCchem(:,:,:,nsc)
                     ! Form implicit residual
-                    call fc%solve_implicit(time%dt, resSC, fs%rhoU, fs%rhoV, fs%rhoW)
+                    ! call fc%solve_implicit(time%dt, resSC, fs%rhoU, fs%rhoV, fs%rhoW)
                     ! Re-apply Dirichlet BCs
                     fc%SC = 2.0_WP*fc%SC - fc%SCold + resSC
                     ! Apply all other boundary conditions on the resulting field
@@ -456,7 +456,7 @@ contains
                 call fc%get_drhodt(dt=time%dt, drhodt=resRHO)
                 call fs%get_div(drhodt=resRHO)
 
-                print *, (fc%rho(16, 16, 1) - fc%rhoold(16, 16, 1))/time%dt, resRHO(16, 16, 1)
+                ! print *, (fc%rho(16, 16, 1) - fc%rhoold(16, 16, 1))/time%dt, resRHO(16, 16, 1)
                 fs%psolv%rhs = -fs%cfg%vol*fs%div/time%dtmid
                 fs%psolv%sol = 0.0_WP
                 call fs%psolv%solve()

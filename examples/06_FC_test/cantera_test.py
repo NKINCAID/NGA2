@@ -7,8 +7,8 @@ from plot_params import lw, ls, ms, mk, c
 
 gas = ct.Solution('cti/YAO_reduced.cti')
 
-gas.set_equivalence_ratio(1.3, "NXC12H26", "O2:1.0,N2:3.76")
-gas.TP = 750.0, 3.4e6
+gas.set_equivalence_ratio(1.0, "NXC12H26", "O2:1.0,N2:3.76")
+gas.TP = 1000.0, 3.4e6
 
 r = ct.IdealGasConstPressureReactor(gas)
 
