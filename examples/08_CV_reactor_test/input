@@ -1,5 +1,5 @@
 # Parallelization
-Partition : 4 1 1
+Partition : 2 1 1
 
 # Mesh definition
 Lx : 0.01
@@ -19,7 +19,7 @@ Velocity fluctuation : 0.1
 Energetic scale      : 0.003
 Dissipative scale    : 0.0001
 Dissipation          : 1e-3
-Pressure = 3.4e6
+Pressure             : 3.4e6
 
 # Time integration
 Max timestep size :	1.0e-5
@@ -33,13 +33,13 @@ Pressure tolerance : 1e-10
 Pressure iteration : 100
 
 # Ensight output
-Ensight output period : 1e-5
+Ensight output period : 1e-4
 
 Stoich moles fuel : 0.05405405405405406
 Fuel : NXC12H26
 Oxidizer : air
 
-T init : 1000
+T init : 750
 
 Boundary condition : periodic
 

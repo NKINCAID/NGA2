@@ -208,6 +208,7 @@ contains
 
             call fc%cfg%integrate(fc%rho, integral=fc%rhoint)
             fc%RHO_0 = fc%rhoint/fc%cfg%vol_total
+            fc%RHOmean=fc%RHO_0
 
             fc%Pthermo_old = fc%Pthermo
 
@@ -299,6 +300,7 @@ contains
             ! call mfile%add_column(fc%SCmax, 'Zmax')
             ! call mfile%add_column(fc%SCmin, 'Zmin')
             call mfile%add_column(fc%SCmax(nspec + 1), 'Tmax')
+            call mfile%add_column(fc%RHOmean, 'RHOmean')
 
             call mfile%add_column(fs%divmax, 'Maximum divergence')
             call mfile%add_column(fs%psolv%it, 'Pressure iteration')
@@ -376,12 +378,14 @@ contains
                     use messager, only: die
                     integer :: nsc
 
+                    ! Build mid-time scalar
+                    fc%SC = 0.5_WP*(fc%SC + fc%SCold)
+
+                    ! Source terms
                     fc%SRC = 0.0_WP
                     call fc%pressure_source()
                     call fc%diffusive_source(time%dt)
 
-                    ! Build mid-time scalar
-                    fc%SC = 0.5_WP*(fc%SC + fc%SCold)
                     ! Explicit calculation of drhoSC/dt from scalar equation
                     call fc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
                     do nsc = 1, fc%nscalar
@@ -394,7 +398,11 @@ contains
                     !    resSC(:,:,:,nsc)=time%dt*resSC(:,:,:,nsc)-2.0_WP*fc%rho*fc%SC(:,:,:,nsc) + (fc%rho+fc%rhoold)*fc%SCold(:,:,:,nsc) + fc%rho * fc%SRCchem(:,:,:,nsc)
                     ! Form implicit residual
                     ! call fc%solve_implicit(time%dt, resSC, fs%rhoU, fs%rhoV, fs%rhoW)
-                    ! Re-apply Dirichlet BCs
+                    ! Divide by density
+                    do nsc=1,fc%nscalar
+                        resSC(:,:,:,nsc)=resSC(:,:,:,nsc)/fc%rho
+                    end do
+                    ! Apply these residuals
                     fc%SC = 2.0_WP*fc%SC - fc%SCold + resSC
                     ! Apply all other boundary conditions on the resulting field
                     call fc%apply_bcond(time%t, time%dt)
