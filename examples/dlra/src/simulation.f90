@@ -38,6 +38,7 @@ module simulation
    real(WP), dimension(:,:,:),     allocatable :: resU,resV,resW,resSC
    real(WP), dimension(:,:,:),     allocatable :: Ui,Vi,Wi
    real(WP), dimension(:,:,:,:,:), allocatable :: gradU
+   real(WP), dimension(:,:,:,:),   allocatable :: SR
 
    !> Inlet conditions
    real(WP) :: Z_jet,Z_cof
@@ -331,6 +332,7 @@ contains
          allocate(resSC(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
          ! Turbulence
          allocate(gradU(1:3,1:3,cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_))
+         allocate(SR(1:6,cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_))
          ! Combustion
          allocate(drho      (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))    ; drho=0.0_WP
          allocate(ZgradMagSq(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))    ; ZgradMagSq=0.0_WP
@@ -580,12 +582,15 @@ contains
          
          ! Turbulence modeling
          sgs_modeling: block
-            use sgsmodel_class, only: vreman
+            use sgsmodel_class, only: constant_smag
             resU=fs%rho
-            call fs%get_gradu(gradU)
-            call sgs%get_visc(type=vreman,dt=time%dtold,rho=resU,gradu=gradU)
+            ! call fs%get_gradu(gradU)
+            call fs%get_strainrate(SR)
+            ! call sgs%get_visc(type=vreman,dt=time%dtold,rho=resU,gradu=gradU)
+            call sgs%get_visc(type=constant_smag,dt=time%dtold,rho=resU,SR=SR)
+            call sgs%get_diff(type=constant_smag,diff_mol=sc%diff,rho=resU,SR=SR)
             fs%visc=fs%visc+sgs%visc
-            sc%diff=sc%diff+sgs%visc/SchmidtSGS
+            sc%diff=sc%diff+sgs%diff
          end block sgs_modeling
 
          ! Perform sub-iterations

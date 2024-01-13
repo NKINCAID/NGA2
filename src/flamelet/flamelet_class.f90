@@ -8,6 +8,8 @@ module flamelet_class
    implicit none
    private
 
+   real(WP), parameter :: Cs=0.15_WP**2/1.0_WP
+
    ! Expose type/constructor/methods
    public :: flamelet
 
@@ -82,15 +84,15 @@ contains
 
 
    subroutine get_Zvar(this,delta,ZgradMagSq,Z)
+      use sgsmodel_class, only: Cs_diff
       class(flamelet), intent(inout) :: this
       real(WP), dimension(this%cfg%imin_:this%cfg%imax_,this%cfg%jmin_:this%cfg%jmax_,this%cfg%kmin_:this%cfg%kmax_), intent(in) :: delta
       real(WP), dimension(this%cfg%imino_:this%cfg%imaxo_,this%cfg%jmino_:this%cfg%jmaxo_,this%cfg%kmino_:this%cfg%kmaxo_), intent(in) :: ZgradMagSq,Z
-      real(WP), parameter :: Cz=0.15_WP**2/1.0_WP
       integer :: i,j,k
       do k=this%cfg%kmin_,this%cfg%kmax_
          do j=this%cfg%jmin_,this%cfg%jmax_
             do i=this%cfg%imin_,this%cfg%imax_
-               this%Zvar(i,j,k)=Cz*delta(i,j,k)**2*ZgradMagSq(i,j,k)
+               this%Zvar(i,j,k)=Cs_diff*delta(i,j,k)**2*ZgradMagSq(i,j,k)
             end do
          end do
       end do
