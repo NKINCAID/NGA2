@@ -394,9 +394,13 @@ contains
       ! Create a scalar solver
       create_fc: block
          use multivdscalar_class, only: dirichlet, neumann, quick, bquick
-         real(WP) :: diffusivity
+         real(WP) :: diffusivity,bundleref
          ! Create scalar solver
          fc = finitechem(cfg=cfg, scheme=bquick, name='fc')
+         ! Schedular
+         call param_read('Use schedular',fc%use_scheduler)
+         call param_read('Bundle Refinement',bundleref)
+         call fc%scheduler_init(bundleref)
          ! Outflow on the right
          call fc%add_bcond(name='xm_outflow', type=neumann, locator=xm_scalar, dir='-x')
          call fc%add_bcond(name='xp_outflow', type=neumann, locator=xp_locator, dir='+x')

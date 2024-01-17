@@ -35,11 +35,14 @@ Dissipative scale    : 0.01
 Dissipation          : 1e-3
 Pressure = 3.4e6
 
+Use schedular     : true
+Bundle Refinement : 2
+
 # Time integration
 Time stepping     : explicit
 Max timestep size :	1e-5
 Max cfl number    :	0.8
-Max time          : 3e-3
+Max time          : 1e-5
 Max iterations    : 1000
 Sub-iterations    : 5
 
