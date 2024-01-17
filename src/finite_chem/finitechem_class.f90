@@ -24,7 +24,7 @@ module finitechem_class
 
    ! DVODE variables
    real(WP) :: atol = 1.0e-15_WP
-   real(WP) :: rtol = 1.0e-9_WP
+   real(WP) :: rtol = 1.0e-12_WP
    integer :: istate, itask
 
    ! Solver options
@@ -300,7 +300,7 @@ contains
          real(WP), dimension(n_), intent(in)  :: sol
          real(WP), dimension(n_), intent(out) :: rhs
          real(WP) :: Cp_mix, Wmix, RHOmix
-         real(WP), dimension(nspec) :: C
+         real(WP), dimension(nspec) :: C, wdot
          real(WP), dimension(nTB + nFO) :: M
          real(WP), dimension(nreac + nreac_reverse) :: W, K
 
@@ -316,18 +316,14 @@ contains
          ! Get RHO of mixture
          RHOmix = this%Pthermo*Wmix/(Rcst*sol(nspec1))
 
-         ! Calculate concentrations of unsteady species
-         c = RHOmix*sol(1:nspec)/W_sp(1:nspec)
-         call get_thirdbodies(M, c)
-         call get_rate_coefficients(k, M, sol(nspec1), this%Pthermo)
-         call get_reaction_rates(w, k, M, c)
-         call get_production_rates(rhs, w)
+         call fcmech_get_wdot(this%Pthermo, sol(nspec+1), sol(1:nspec), wdot)
+
 
          ! Transform concentration into mass fraction
-         rhs(1:nspec) = rhs(1:nspec)*W_sp(1:nspec)/RHOmix
+         rhs(1:nspec) = wdot*W_sp/RHOmix
 
          ! Temperature rhs from change in concentration
-         rhs(nspec1) = -sum(hsp(1:nspec)*rhs(1:nspec))/Cp_mix
+         rhs(nspec1) = -sum(hsp*rhs(1:nspec))/Cp_mix
 
          return
       end subroutine fc_reaction_compute_rhs
