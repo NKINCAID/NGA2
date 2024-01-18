@@ -397,8 +397,8 @@ contains
          real(WP) :: diffusivity,bundleref
          ! Create scalar solver
          fc = finitechem(cfg=cfg, scheme=bquick, name='fc')
-         ! Schedular
-         call param_read('Use schedular',fc%use_scheduler)
+         ! Scheduler
+         call param_read('Use scheduler',fc%use_scheduler)
          call param_read('Bundle Refinement',bundleref)
          call fc%scheduler_init(bundleref)
          ! Outflow on the right

@@ -35,7 +35,7 @@ Dissipative scale    : 0.01
 Dissipation          : 1e-3
 Pressure = 3.4e6
 
-Use schedular     : true
+Use scheduler     : true
 Bundle Refinement : 2
 
 # Time integration
