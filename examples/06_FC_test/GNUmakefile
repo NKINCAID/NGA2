@@ -38,6 +38,9 @@ ifdef Ulocs
 endif
 $(info Taking base code from: $(Bdirs))
 
+# Ignore MPI send/recv argument type mismatch error
+F90FLAGS += -fallow-argument-mismatch
+
 # Target definition
 all: $(executable)
 	@echo COMPILATION SUCCESSFUL

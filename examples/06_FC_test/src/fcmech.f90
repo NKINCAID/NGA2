@@ -1,12 +1,12 @@
 !--------------------------------------------------------------------------------------------------
 !     Copyright (c) CERFACS (all rights reserved)
 !--------------------------------------------------------------------------------------------------
-!     FILE fcmech.f90
-!>    @file fcmech.f90
+!     FILE ATJ.f90
+!>    @file ATJ.f90
 !!    Module for calculating the analytical source terms in NGA
 !!    @details 
 !!    @authors 
-!!    @date    2023/12/15
+!!    @date    2024/01/16
 !!    @since   
 !!    @note    
 !--------------------------------------------------------------------------------------------------
@@ -61314,39 +61314,51 @@ contains
   end subroutine get_production_rates
 
 
-  ! ----------------------------------------------- !
-  ! Mass fractions to concentrations                !
-  ! ----------------------------------------------- !
-  subroutine y2c(y, W_sp, P, T, c)
-    implicit none
+    ! ----------------------------------------------- !
+    ! internal NGA2 routine                         !
+    ! ----------------------------------------------- !
+    subroutine fcmech_get_wdot(P, T, y, wdot)
 
-    real(WP),dimension(nspec) :: W_sp
-    real(WP),dimension(nspec) :: c, y
-    real(WP) :: rho, P, T, inv_W_g
+      implicit none
 
-    integer :: k
-    
-    ! Gas molecular weight inverse
-    inv_W_g = 0.0_WP
-    do k =1, nspec
-      inv_W_g = inv_W_g + y(k) / W_sp(k)
-    end do
+      real(WP), dimension(nspec) :: y, c, wdot, cdot
+      real(WP), dimension(nspec+1) :: rhs
+      real(WP), dimension(nqss) :: cqss
+      real(WP), dimension(nreac + nreac_reverse) :: w,k
+      real(WP), dimension(nTB + nFO) :: M
 
-    ! Gas density
-    rho = P / (Rcst * inv_W_g * T)
+      real(WP) :: P, T, rho, inv_W_g
 
-    ! Conversion
-    c = y * rho / W_sp
+      integer :: n
 
-    ! Concentrations clipping
-    !do  k = 1, nspec
-    !   if (c(k)<1.0e-20_WP) c(k) = 0.0_WP
-    !end do
+      ! Gas molecular weight inverse
+      inv_W_g = 0.0_WP
+      do n =1, nspec
+        inv_W_g = inv_W_g + y(n) / W_sp(n)
+      end do
 
-        return
-    end subroutine y2c
+      ! Gas density
+      rho = P / (Rcst * inv_W_g * T)
+
+      ! Conversion
+      c = y * rho / W_sp
+
+      ! Evaluate QSS concentrations and reaction rates
+      call get_thirdbodies(M,c)
+
+      call get_rate_coefficients(k, M, T, P)
+      call get_pdep_rate_coefficients(k,T,P)
+
+      call get_reaction_rates(w, k, M, c)
+
+      ! Evaluate production rates
+      call get_production_rates(wdot,w)
+
+      return
+    end subroutine fcmech_get_wdot
 
 end module fcmech
+
 ! ===================== !
 ! Cp and H computations !
 ! ===================== !
