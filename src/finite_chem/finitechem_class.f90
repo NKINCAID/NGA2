@@ -157,6 +157,7 @@ contains
       this%bundleref=bundleref
       this%nbundles = int((this%cfg%imax_-this%cfg%imin_+1)*(this%cfg%jmax_-this%cfg%jmin_+1)*(this%cfg%kmax_-this%cfg%kmin_+1)/this%bundleref)
       call MPI_ALLREDUCE(this%nbundles,this%nbundles_max,1,MPI_INTEGER,MPI_MAX,this%cfg%comm,ierr)
+      if (this%cfg%amRoot) print*,'**Dynamic scheduler'
       print*,'Number of cells per bundle:',this%nbundles,'[proc: ',this%cfg%rank,']'
       ! allocate(this%imaster_list(0:this%cfg%nproc-1),this%imaster_aware(0:this%cfg%nproc-1))
       allocate(this%imaster_list(this%cfg%nproc),this%imaster_aware(this%cfg%nproc))
