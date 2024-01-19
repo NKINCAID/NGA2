@@ -1,5 +1,5 @@
 # Parallelization
-Partition : 6 1 1
+Partition : 8 1 1
 
 # Mesh definition
 Lx : 0.01 # 0.01
@@ -27,9 +27,9 @@ Temperature lower bound : 650
 Buffer temperature      : 650
 
 # Neural network data files
-Auto encoder         : auto_encoder.bin
-Chemical source      : chem_sources.bin
-Transport properties : fluid_trnspt.bin
+Auto encoder         : auto_encoder
+Chemical source      : chem_sources
+Transport properties : fluid_trnspt
 
 # Time integration
 Max timestep size : 1e-5

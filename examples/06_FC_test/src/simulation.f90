@@ -40,7 +40,7 @@ module simulation
    !> Private work arrays
    real(WP), dimension(:, :, :), allocatable :: resU, resV, resW, resRHO
    real(WP), dimension(:, :, :), allocatable :: Ui, Vi, Wi
-   real(WP), dimension(:,:,:),   allocatable :: SC_init               !< Initial condition for scalar field
+   real(WP), dimension(:,:,:),   allocatable :: SC_init,U_init,V_init !< Initial condition for scalar and velocity fields
    real(WP), dimension(:, :, :, :), allocatable :: SR
    real(WP), dimension(:, :, :, :, :), allocatable :: gradU
    real(WP), dimension(:, :, :), allocatable :: tmp_sc
@@ -360,11 +360,167 @@ contains
       ! call fade_borders(SC_init,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
    end subroutine doubledelta_SCinit
 
+   !> Initialize PP spectrum for velocity
+   subroutine PP_spectrum(Lbu,Lfd,Ut,le,ld,epsilon)
+      use precision
+      use param,    only: param_read
+      use random,   only: random_normal,random_uniform
+      use, intrinsic :: iso_c_binding
+      implicit none
+
+      ! Buffer and faded region lenght
+      real(WP), intent(in) :: Lbu,Lfd
+      ! Turbulent velocity
+      real(WP) :: Ut
+      ! Spectrum type
+      real(WP) :: le,ld,epsilon
+      ! Spectrum computation
+      real(WP) :: psr,ps1,ps2,ke,dk,kc,kk,kx,ky,kz,kk2
+      real(WP) :: spec_amp,eps,amp_disc,energy_spec
+      complex(WP), dimension(:,:,:), pointer :: ak,bk
+      ! Cutoff wave number
+      integer  :: nk
+      ! Complex buffer
+      complex(WP), dimension(:,:,:), pointer :: Cbuf
+      ! Real buffer
+      real(WP), dimension(:,:,:), pointer :: Rbuf
+      ! Other
+      integer :: i,j,k
+      integer :: imin,imax,jmin,jmax,kmin,kmax,nx,ny,nz
+      complex(WP) :: ii=(0.0_WP,1.0_WP)
+      real(WP) :: rand,pi
+      ! Fourier coefficients
+      integer(KIND=8) :: plan_r2c,plan_c2r
+      complex(WP), dimension(:,:,:), pointer :: Uk,Vk
+
+      include 'fftw3.f03'
+
+      ! Create pi
+      pi=acos(-1.0_WP)
+
+      ! Find bounds of the region to be initialized
+      call get_borders(Lbu,imin,imax,jmin,jmax,kmin,kmax)
+
+      ! Number of cells iniside the initialization region
+      nx=imax-imin+1
+      ny=jmax-jmin+1
+      nz=kmax-kmin+1
+      nk=nx/2+1
+
+      ! Spectrum computation
+      ke=2.0_WP*pi/le
+      dk=2.0_WP*pi/(Lx-2.0_WP*Lbu)
+      kc=real(nx/2,WP)*dk
+
+      eps=ke/1000000.0_WP
+      spec_amp=(32.0_WP/3.0_WP)*sqrt(2.0_WP/pi)*Ut**2/ke
+      amp_disc=sqrt(dk)**3
+
+      ! Compute spectrum
+      allocate(ak(nk,ny,nz),bk(nk,ny,nz))
+      do k=1,nz
+         do j=1,ny
+            do i=1,nk
+               ! Random numbers
+               call random_number(rand)
+               psr=2.0_WP*pi*(rand-0.5_WP)
+               call random_number(rand)
+               ps1=2.0_WP*pi*(rand-0.5_WP)
+               call random_number(rand)
+               ps2=2.0_WP*pi*(rand-0.5_WP)
+               ! Wavenumbers
+               kx=real(i-1,WP)*dk
+               ky=real(j-1,WP)*dk
+               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
+               kz=real(k-1,WP)*dk
+               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
+               kk=sqrt(kx**2+ky**2+kz**2)
+               ! Spectrums
+               energy_spec=spec_amp*(kk/ke)**4*exp(-2.0_WP*(kk/ke)**2)
+               ! Coeff
+               ak(i,j,k)=0.0_WP
+               bk(i,j,k)=0.0_WP
+               if ((kk.gt.eps).and.(kk.le.kc)) then
+                  ak(i,j,k)=dk*sqrt(energy_spec/(1.0_WP*pi*kk**1))*exp(ii*ps1)
+               end if
+            end do
+         end do
+      end do
+
+      ! Compute 3D field
+      allocate(Uk(nk,ny,nz))
+      allocate(Vk(nk,ny,nz))
+      Uk=(0.0_WP,0.0_WP)
+      Vk=(0.0_WP,0.0_WP)
+
+      ! Compute the Fourier coefficients
+      do k=1,nz
+         do j=1,ny
+            do i=1,nk
+               ! Wavenumbers
+               kx=real(i-1,WP)*dk
+               ky=real(j-1,WP)*dk
+               if (j.gt.nk) ky=-real(nx+1-j,WP)*dk
+               kz=real(k-1,WP)*dk
+               if (k.gt.nk) kz=-real(nx+1-k,WP)*dk
+               kk =sqrt(kx**2+ky**2+kz**2)
+               kk2=sqrt(kx**2+ky**2)
+
+               if ((kk.gt.eps).and.(kk.le.kc)) then
+                  if (kk2.lt.eps) then
+                     Uk(i,j,k)=(ak(i,j,k)+bk(i,j,k))/sqrt(2.0_WP)
+                     Vk(i,j,k)=(bk(i,j,k)-ak(i,j,k))/sqrt(2.0_WP)
+                  else
+                     Uk(i,j,k)=(ak(i,j,k)*kk*ky+bk(i,j,k)*kx*kz)/(kk*kk2)
+                     Vk(i,j,k)=(bk(i,j,k)*ky*kz-ak(i,j,k)*kk*kx)/(kk*kk2)
+                  end if
+               end if
+            end do
+         end do
+      end do
+
+      ! Oddball
+      do j=nk+1,ny
+         Uk(1,j,1)=conjg(Uk(1,ny+2-j,1))
+         Vk(1,j,1)=conjg(Vk(1,ny+2-j,1))
+      end do
+
+      ! Inverse Fourier transform
+      allocate(Cbuf(nk,ny,nz))
+      allocate(Rbuf(nx,ny,nz))
+      call dfftw_plan_dft_c2r_2d(plan_c2r,nx,ny,Cbuf,Rbuf,FFTW_ESTIMATE)
+      call dfftw_plan_dft_r2c_2d(plan_r2c,nx,ny,Rbuf,Cbuf,FFTW_ESTIMATE)
+
+      ! Set zero in the buffer region
+      U_init=0.0_WP
+      V_init=0.0_WP
+
+      ! Execute the plans
+      Cbuf=Uk
+      call dfftw_execute(plan_c2r)
+      U_init(imin:imax,jmin:jmax,kmin:kmax)=Rbuf
+      Cbuf=Vk
+      call dfftw_execute(plan_c2r)
+      V_init(imin:imax,jmin:jmax,kmin:kmax)=Rbuf
+
+      ! Clean up
+      deallocate(Uk)
+      deallocate(Vk)
+      deallocate(ak)
+      deallocate(bk)
+
+      ! Fade to zero in the buffer region
+      ! call fade_borders(U_init,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
+      ! call fade_borders(V_init,Lbu,Lfd,imin,imax,jmin,jmax,kmin,kmax)
+   end subroutine PP_spectrum
+
    !> Initialization of problem solver
    subroutine simulation_init
       use param, only: param_read,param_getsize,param_exists
       implicit none
 
+      call param_read('Buffer region length',L_buffer)
+      
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
          use hypre_str_class, only: pcg_pfmg, smg
@@ -428,6 +584,8 @@ contains
          allocate (Wi(fs%cfg%imino_:fs%cfg%imaxo_, fs%cfg%jmino_:fs%cfg%jmaxo_, fs%cfg%kmino_:fs%cfg%kmaxo_))
          allocate (SR(1:6, cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
          allocate(SC_init(fc%cfg%imin:fc%cfg%imax,fc%cfg%jmin:fc%cfg%jmax,fc%cfg%kmin:fc%cfg%kmax))
+         allocate(U_init (fs%cfg%imin:fs%cfg%imax,fs%cfg%jmin:fs%cfg%jmax,fs%cfg%kmin:fs%cfg%kmax))
+         allocate(V_init (fs%cfg%imin:fs%cfg%imax,fs%cfg%jmin:fs%cfg%jmax,fs%cfg%kmin:fs%cfg%kmax))
          allocate (gradU(1:3, 1:3, cfg%imino_:cfg%imaxo_, cfg%jmino_:cfg%jmaxo_, cfg%kmino_:cfg%kmaxo_))
          ! Scalar solver
          allocate (resSC(fc%cfg%imino_:fc%cfg%imaxo_, fc%cfg%jmino_:fc%cfg%jmaxo_, fc%cfg%kmino_:fc%cfg%kmaxo_, fc%nscalar))
@@ -462,7 +620,7 @@ contains
          integer :: n, i, j, k, ierr
          character(len=str_medium) :: fuel, oxidizer
          real(WP) :: moles_fuel
-         real(WP) :: T_init, L_buffer, T_buf
+         real(WP) :: T_init, T_buf
          integer  :: imin,imax,jmin,jmax,kmin,kmax
          real(WP) :: tmpY
          type(bcond), pointer :: mybc
@@ -487,7 +645,6 @@ contains
 
          call param_read('Pressure', fc%Pthermo)
 
-         call param_read('Buffer region length',L_buffer)
          call param_read('Buffer temperature',T_buf)
 
          call get_borders(L_buffer,imin,imax,jmin,jmax,kmin,kmax)
@@ -533,22 +690,37 @@ contains
       ! Initialize our velocity field
       initialize_velocity: block
          use lowmach_class, only: bcond
-         use random, only: random_normal
-         use mathtools, only: Pi
-         integer :: n, i, j, k
+         use parallel,      only: MPI_REAL_WP
+         integer  :: n,i,j,k,ierr
+         real(WP) :: Ut,le,ld,epsilon
          type(bcond), pointer :: mybc
-         ! Zero initial field
-         fs%U = 0.0_WP; fs%V = 0.0_WP; fs%W = 0.0_WP
-
+         ! Read-in the inputs
+         call param_read('Velocity fluctuation',Ut)
+         call param_read('Energetic scale',le)
+         call param_read('Dissipative scale',ld)
+         call param_read('Dissipation',epsilon)
+         ! Initialize the global velocity field
+         if (fs%cfg%amRoot) call PP_spectrum(L_buffer,0.0_WP,Ut,le,ld,epsilon)
+         ! Communicate information
+         call MPI_BCAST(U_init,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
+         call MPI_BCAST(V_init,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
+         ! Set the local velocity field
+         fs%U(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=U_init(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
+         fs%V(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)=V_init(fs%cfg%imin_:fs%cfg%imax_,fs%cfg%jmin_:fs%cfg%jmax_,fs%cfg%kmin_:fs%cfg%kmax_)
+         ! Sync it
+         call fs%cfg%sync(fs%U)
+         call fs%cfg%sync(fs%V)
+         ! Release memory
+         deallocate(U_init)
+         deallocate(V_init)
          ! Set density from scalar
-         fs%rho = fc%rho
-         fs%visc = fc%visc
+         fs%rho=fc%rho
          ! Form momentum
-         call fs%rho_multiply
+         call fs%rho_multiply()
          ! Apply all other boundary conditions
-         call fs%apply_bcond(time%t, time%dt)
-         call fs%interp_vel(Ui, Vi, Wi)
-         resRHO = 0.0_WP
+         call fs%apply_bcond(time%t,time%dt)
+         call fs%interp_vel(Ui,Vi,Wi)
+         resRHO=0.0_WP
          call fs%get_div(drhodt=resRHO)
          ! Compute MFR through all boundary conditions
          call fs%get_mfr()

@@ -49,6 +49,7 @@ examples/*/input*~
 !examples/*/src
 !examples/*/*.py
 !examples/*/cti
+!examples/*/networks
 !examples/*/*.sh
 !examples/nozzle_internal/cad
 !examples/nozzle_2phase/cad
