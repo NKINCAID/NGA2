@@ -1,12 +1,12 @@
 # Parallelization
-Partition : 8 1 1
+Partition : 6 1 1
 
 # Mesh definition
 Lx : 0.01
 Ly : 0.01
 Lz : 0.0001
-nx : 64
-ny : 64
+nx : 200
+ny : 200
 nz : 1
 
 # Initial conditions
@@ -19,6 +19,10 @@ Energetic scale         : 0.001
 Dissipative scale       : 0.0001
 Dissipation             : 1e-3
 
+Temperature range       : 400
+Temperature lower bound : 650
+Buffer temperature      : 650
+
 Initial HMN           :    1.0810837e-02
 Initial XC12H26       :    5.2061660e-02
 Initial N2            :    7.1877706e-01
@@ -29,8 +33,6 @@ Initial O2            :    2.1835044e-01
 !Initial O2            :    2.1836674e-01
 !Initial NXC12H26      :    6.2833859e-02
 
-! Initial temperature  : 750
-Buffer temperature   : 500
 
 Pressure = 3.4e6
 

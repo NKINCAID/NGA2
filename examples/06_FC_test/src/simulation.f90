@@ -620,11 +620,16 @@ contains
          integer :: n, i, j, k, ierr
          character(len=str_medium) :: fuel, oxidizer
          real(WP) :: moles_fuel
-         real(WP) :: T_init, T_buf
          integer  :: imin,imax,jmin,jmax,kmin,kmax
          real(WP) :: tmpY
+         real(WP) :: h_init,T_buf,T_range,T_min
          type(bcond), pointer :: mybc
 
+
+         ! Read-in inputs
+         call param_read('Buffer temperature',T_buf)
+         call param_read('Temperature range',T_range)
+         call param_read('Temperature lower bound',T_min)
 
          ! Get all the species names in the mechanism
          call fcmech_get_speciesnames(spec_name)
@@ -658,9 +663,6 @@ contains
          tmp_sc_min = minval(SC_init)
          tmp_sc_max = maxval(SC_init)
          
-         if (cfg%amRoot) then
-            print *, tmp_sc_min, tmp_sc_max, SC_init(50,50, 1)
-         end if
 
          ! Set initial conditions
          do k = fc%cfg%kmino_, fc%cfg%kmaxo_
@@ -668,7 +670,7 @@ contains
                do i = fc%cfg%imino_, fc%cfg%imaxo_
 
                   if ((i.ge.imin).and.(i.le.imax).and.(j.ge.jmin).and.(j.le.jmax).and.(k.ge.kmin).and.(k.le.kmax)) then
-                     fc%SC(i,j,k, nspec+1)=(SC_init(i,j,k) - tmp_sc_min) / (tmp_sc_max - tmp_sc_min) * 300.0_WP + 700.0_WP
+                     fc%SC(i,j,k, nspec+1)=(SC_init(i,j,k) - tmp_sc_min) / (tmp_sc_max - tmp_sc_min) *T_range+T_min
                   else
                      fc%SC(i,j,k, nspec+1)=T_buf
                   end if
