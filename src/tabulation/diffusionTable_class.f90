@@ -23,7 +23,7 @@ module diffusionTable_class
       character(len=str_long) :: Z3_scale
 
       ! Table parameters
-      integer :: nZMean, nZVar,n3
+      integer :: nZMean,nZVar,n3
       real(WP), dimension(:), allocatable :: ZMean,ZVar,Z3
 
       ! Beta pdf
@@ -453,6 +453,8 @@ contains
       implicit none
       class(diffusionTable), intent(inout) :: this
       integer :: ierr,var,iunit
+      ! Debug
+      integer :: ftest,i,j
 
       ! Open the data file
       open(newunit=iunit,file=trim(this%filename),form='unformatted',status='replace',access='stream',iostat=ierr)
@@ -477,6 +479,18 @@ contains
       end do
       ! Close the data file
       close(iunit)
+      ! Debug
+      open(newunit=ftest,file='T_tabulated.dat',status='replace',form='formatted',position='rewind')
+      do var=1,this%nvar_out
+         if (this%output_name(var).eq.'temperature') then
+            do j=1,this%nZVar
+               do i=1,this%nZmean
+                  write(ftest,'(3f15.6)') this%Zmean(i),this%Zvar(j),this%output_data(i,j,1,var)
+               end do
+            end do
+         end if
+      end do
+      close(ftest)
    end subroutine diffusionTable_write
 
 

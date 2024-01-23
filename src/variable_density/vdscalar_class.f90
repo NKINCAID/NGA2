@@ -97,7 +97,7 @@ module vdscalar_class
       procedure :: solve_implicit                           !< Solve for the scalar residuals implicitly
       procedure :: rho_divide                               !< Divide rhoSC by rho to get SC
       procedure :: rho_multiply                             !< Multiply SC by rho to get rhoSC
-      procedure :: grad_mag_sq                              !< Get the square of the gradient magnitude
+      procedure :: get_gradient                              !< Get the square of the gradient magnitude
    end type vdscalar
    
    
@@ -749,11 +749,12 @@ contains
    
    
    !> Compute the gradient of the scalar at the cell centers
-   function grad_mag_sq(this,itpr_x,itpr_y,itpr_z) result(SCgradMagSq)
+   subroutine get_gradient(this,itpr_x,itpr_y,itpr_z,SCgradMagSq)
       implicit none
       class(vdscalar), intent(in) :: this
       real(WP), dimension(-1:0,this%cfg%imin_:this%cfg%imax_+1,this%cfg%jmin_:this%cfg%jmax_+1,this%cfg%kmin_:this%cfg%kmax_+1), intent(in) :: itpr_x,itpr_y,itpr_z
-      real(WP), dimension(this%cfg%imino_:this%cfg%imaxo_,this%cfg%jmino_:this%cfg%jmaxo_,this%cfg%kmino_:this%cfg%kmaxo_) :: SCgradx,SCgrady,SCgradz,SCgradMagSq
+      real(WP), dimension(this%cfg%imino_:this%cfg%imaxo_,this%cfg%jmino_:this%cfg%jmaxo_,this%cfg%kmino_:this%cfg%kmaxo_), intent(out) :: SCgradMagSq
+      real(WP), dimension(this%cfg%imino_:this%cfg%imaxo_,this%cfg%jmino_:this%cfg%jmaxo_,this%cfg%kmino_:this%cfg%kmaxo_) :: SCgradx,SCgrady,SCgradz
       real(WP) :: SCf
       integer :: i,j,k
 
@@ -782,7 +783,7 @@ contains
             end do
          end do
       end do
-   end function grad_mag_sq
+   end subroutine get_gradient
 
    
 end module vdscalar_class

@@ -241,6 +241,8 @@ contains
       call param_read('Z coflow',Z_cof)
       call param_read('D coflow',D_cof)
       call param_read('U coflow',U_cof)
+      call param_read('Filtering levels',nfilter)
+      call param_read('Density limiter',rho_limiter)
       n_Y=param_getsize('Ensight output species')
 
 
@@ -306,9 +308,6 @@ contains
          ! Construct the flamelet object
          flm=flamelet(cfg=cfg,flmModel=sfm,tablefile=trim(chfname),name='Steady flamelet model')
          call flm%print()
-         ! Read in control parameters for density
-         call param_read('Filtering levels',nfilter)
-         call param_read('Density limiter',rho_limiter)
       end block create_combustion
 
 
@@ -386,7 +385,7 @@ contains
          ! Lookup diffusivity
          call flm%chmtbl%lookup('diffusivity',sc%diff,sc%SC,flm%Zvar,flm%chi,ncells)
          ! Mixture fraction gradient
-         ZgradMagSq=sc%grad_mag_sq(itpr_x=fs%itpr_x,itpr_y=fs%itpr_y,itpr_z=fs%itpr_z)
+         call sc%get_gradient(itpr_x=fs%itpr_x,itpr_y=fs%itpr_y,itpr_z=fs%itpr_z,SCgradMagSq=ZgradMagSq)
          ! Mixture fraction variance
          call flm%get_Zvar(delta=sgs%delta,ZgradMagSq=ZgradMagSq,Z=sc%SC)
          ! Lookup density
@@ -402,6 +401,36 @@ contains
             call flm%chmtbl%lookup(Y_name(iY),Y(:,:,:,iY),sc%SC,flm%Zvar,flm%chi,ncells)
          end do
       end block initialize_combustion
+
+
+      ! Debug
+      debug: block
+         integer :: ftest,i,j,nZmean,nZvar
+         real(WP) :: dZmean,dZvar
+         real(WP), dimension(:,:), allocatable :: Zmean,Zvar,chi,Tout
+         if (flm%cfg%amRoot) then
+            dZmean=0.01_WP
+            dZvar =0.0025_WP
+            nZmean=int(1.0_WP/dZmean+1)
+            nZvar =int(1.0_WP/dZvar +1)
+            allocate(Zmean(nZmean,nZvar),Zvar(nZmean,nZvar),Tout(nZmean,nZvar),chi(nZmean,nZvar))
+            do j=1,nZvar
+               do i=1,nZmean
+                  Zmean(i,j)=0.0_WP+real(i-1,WP)*dZmean
+                  Zvar(i,j) =0.0_WP+real(j-1,WP)*dZvar
+               end do
+            end do
+            chi=0.0_WP
+            call flm%chmtbl%lookup('temperature',Tout,Zmean,Zvar,chi,nZmean*nZvar)
+            open(newunit=ftest,file='T_lookedup.dat',status='replace',form='formatted',position='rewind')
+            do j=1,nZvar
+               do i=1,nZmean
+                  write(ftest,'(3f15.6)') Zmean(i,j),Zvar(i,j),Tout(i,j)
+               end do
+            end do
+            close(ftest)
+         end if
+      end block debug
 
 
       ! Get the inlet data
@@ -574,7 +603,7 @@ contains
          ! Get transport properties and chemtable inputs
          call flm%chmtbl%lookup('viscosity',fs%visc,sc%SC,flm%Zvar,flm%chi,ncells)
          call flm%chmtbl%lookup('diffusivity',sc%diff,sc%SC,flm%Zvar,flm%chi,ncells)
-         ZgradMagSq=sc%grad_mag_sq(itpr_x=fs%itpr_x,itpr_y=fs%itpr_y,itpr_z=fs%itpr_z)
+         call sc%get_gradient(itpr_x=fs%itpr_x,itpr_y=fs%itpr_y,itpr_z=fs%itpr_z,SCgradMagSq=ZgradMagSq)
          call flm%get_Zvar(delta=sgs%delta,ZgradMagSq=ZgradMagSq,Z=sc%SC)
          ! Not sure which of the following is good
          call flm%get_chi(mueff=fs%visc,rho=sc%rho,ZgradMagSq=ZgradMagSq)
