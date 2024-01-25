@@ -30,7 +30,7 @@ module simulation
    type(event)   :: ens_evt
 
    !> Simulation monitor file
-   type(monitor) :: mfile, cflfile, consfile, fcfile
+   type(monitor) :: mfile, cflfile, consfile, fcfile,statfile
 
    character(len=str_medium), dimension(:), allocatable :: spec_name
 
@@ -41,6 +41,7 @@ module simulation
    real(WP), dimension(:, :, :), allocatable :: resU, resV, resW, resRHO
    real(WP), dimension(:, :, :), allocatable :: Ui, Vi, Wi
    real(WP), dimension(:,:,:),   allocatable :: SC_init,U_init,V_init !< Initial condition for scalar and velocity fields
+   real(WP), dimension(:,:,:),   allocatable :: tmpfield              !< Temporary field for statistics
    real(WP), dimension(:, :, :, :), allocatable :: SR
    real(WP), dimension(:, :, :, :, :), allocatable :: gradU
    real(WP), dimension(:, :, :), allocatable :: tmp_sc
@@ -67,6 +68,9 @@ module simulation
 
    !> Time stepping
    character(len=str_medium) :: time_stepping
+
+   !> Statistics
+   real(WP) :: rhomean,Tmean,Trms,Tmax
 
 contains
 
@@ -595,8 +599,9 @@ contains
 
          allocate(spec_name(nspec))
 
-         ! Temporary scalar field for initialization
+         ! Temporary arrays
          allocate (tmp_sc(fc%cfg%imin:fc%cfg%imax, fc%cfg%jmin:fc%cfg%jmax, fc%cfg%kmin:fc%cfg%kmax))
+         allocate(tmpfield(fc%cfg%imin:fc%cfg%imax,fc%cfg%jmin:fc%cfg%jmax,fc%cfg%kmin:fc%cfg%kmax)); tmpfield=0.0_WP
       end block allocate_work_arrays
 
       ! Initialize time tracker
@@ -728,6 +733,23 @@ contains
          call fs%get_mfr()
       end block initialize_velocity
 
+      ! Initialize turbulence statistics
+      initialize_stats: block
+         ! Mean density
+         call cfg%integrate(fc%rho,rhomean)
+         rhomean=rhomean/cfg%vol_total
+         ! Favre-averaged temperature
+         tmpfield=fc%rho*fc%SC(:,:,:,nspec+1)
+         call cfg%integrate(tmpfield,Tmean)
+         Tmean=Tmean/(rhomean*cfg%vol_total)
+         ! Favre-averaged temperature fluctuations
+         tmpfield=fc%rho*(fc%SC(:,:,:,nspec+1)-Tmean)**2
+         call cfg%integrate(tmpfield,Trms)
+         Trms=sqrt(Trms/(rhomean*cfg%vol_total))
+         ! Maximum temperature
+         call cfg%maximum(fc%SC(:,:,:,nspec+1),Tmax)
+      end block initialize_stats
+
       ! Add Ensight output
       create_ensight: block
          ! Create Ensight output from cfg
@@ -816,6 +838,13 @@ contains
          call consfile%add_column(fc%rhoint, 'RHO integral')
          ! call consfile%add_column(fc%rhoSCint, 'rhoSC integral')
          call consfile%write()
+         ! Creat statistics monitor
+         statfile=monitor(fs%cfg%amRoot,'stats')
+         call statfile%add_column(time%t,'Time')
+         call statfile%add_column(Tmean,'Tmean')
+         call statfile%add_column(Trms,'Trms')
+         call statfile%add_column(Tmax,'Tmax')
+         call statfile%write()
       end block create_monitor
 
    end subroutine simulation_init
@@ -1022,11 +1051,29 @@ contains
 
          ! Recompute interpolated velocity and divergence
          call fs%interp_vel(Ui, Vi, Wi)
-         call fc%get_drhodt(dt=time%dt, drhodt=resRHO)
+         call fc%get_drhodt(dt=time%dt,drhodt=resRHO)
          call fs%get_div(drhodt=resRHO)
 
-         ! Output to ensight
-         if (ens_evt%occurs()) call ens_out%write_data(time%t)
+         ! Post process
+         if (ens_evt%occurs()) then
+            ! Mean density
+            call cfg%integrate(fc%rho,rhomean)
+            rhomean=rhomean/cfg%vol_total
+            ! Favre-averaged temperature
+            tmpfield=fc%rho*fc%SC(:,:,:,nspec+1)
+            call cfg%integrate(tmpfield,Tmean)
+            Tmean=Tmean/(rhomean*cfg%vol_total)
+            ! Favre-averaged temperature fluctuations
+            tmpfield=fc%rho*(fc%SC(:,:,:,nspec+1)-Tmean)**2
+            call cfg%integrate(tmpfield,Trms)
+            Trms=sqrt(Trms/(rhomean*cfg%vol_total))
+            ! Maximum temperature
+            call cfg%maximum(fc%SC(:,:,:,nspec+1),Tmax)
+            ! Output to ensight
+            call ens_out%write_data(time%t)
+            ! Output monitoring
+            call statfile%write()
+         end if
 
          ! Perform and output monitoring
          call fs%get_max()
