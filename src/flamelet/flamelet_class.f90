@@ -99,7 +99,7 @@ contains
       ! Sync it
       call this%cfg%sync(this%Zvar)
       ! Clip the computed Variance
-      ! this%Zvar=max(0.0_WP,min(Z*(1.0_WP-Z),this%Zvar))
+      this%Zvar=max(0.0_WP,min(Z*(1.0_WP-Z),this%Zvar))
    end subroutine get_Zvar
 
 

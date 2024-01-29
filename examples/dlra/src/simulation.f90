@@ -50,7 +50,7 @@ module simulation
    real(WP) :: int_RP=0.0_WP
 
    !> Turbulence
-   real(WP) :: SchmidtSGS
+   ! real(WP) :: SchmidtSGS
 
    !> Combustion
    integer  :: nfilter,ncells,n_Y,iY
@@ -314,7 +314,7 @@ contains
       ! Create a SGS model
       create_sgs: block
          sgs=sgsmodel(cfg=fs%cfg,umask=fs%umask,vmask=fs%vmask,wmask=fs%wmask)
-         call param_read('SGS Schmidt number',SchmidtSGS)
+         ! call param_read('SGS Schmidt number',SchmidtSGS)
       end block create_sgs
 
 
@@ -409,23 +409,32 @@ contains
          real(WP) :: dZmean,dZvar
          real(WP), dimension(:,:), allocatable :: Zmean,Zvar,chi,Tout
          if (flm%cfg%amRoot) then
-            dZmean=0.01_WP
-            dZvar =0.0025_WP
-            nZmean=int(1.0_WP/dZmean+1)
-            nZvar =int(1.0_WP/dZvar +1)
+            ! dZmean=0.01_WP
+            ! dZvar =0.0025_WP
+            ! nZmean=int(1.0_WP/dZmean+1)
+            ! nZvar =int(1.0_WP/dZvar +1)
+            nZmean=flm%chmtbl%n1
+            nZvar =flm%chmtbl%n2
+            print*,'nZmean = ',nZmean,', nZvar = ',nZvar
             allocate(Zmean(nZmean,nZvar),Zvar(nZmean,nZvar),Tout(nZmean,nZvar),chi(nZmean,nZvar))
+            ! do j=1,nZvar
+            !    do i=1,nZmean
+            !       Zmean(i,j)=0.0_WP+real(i-1,WP)*dZmean
+            !       Zvar(i,j) =0.0_WP+real(j-1,WP)*dZvar
+            !    end do
+            ! end do
             do j=1,nZvar
-               do i=1,nZmean
-                  Zmean(i,j)=0.0_WP+real(i-1,WP)*dZmean
-                  Zvar(i,j) =0.0_WP+real(j-1,WP)*dZvar
-               end do
+               Zmean(:,j)=flm%chmtbl%x1
+            end do
+            do i=1,nZmean
+               Zvar(i,:)=flm%chmtbl%x2
             end do
             chi=0.0_WP
             call flm%chmtbl%lookup('temperature',Tout,Zmean,Zvar,chi,nZmean*nZvar)
             open(newunit=ftest,file='T_lookedup.dat',status='replace',form='formatted',position='rewind')
             do j=1,nZvar
                do i=1,nZmean
-                  write(ftest,'(3f15.6)') Zmean(i,j),Zvar(i,j),Tout(i,j)
+                  write(ftest,'(3es12.5)') Zmean(i,j),Zvar(i,j),Tout(i,j)
                end do
             end do
             close(ftest)

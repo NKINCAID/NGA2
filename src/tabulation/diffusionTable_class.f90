@@ -485,7 +485,7 @@ contains
          if (this%output_name(var).eq.'temperature') then
             do j=1,this%nZVar
                do i=1,this%nZmean
-                  write(ftest,'(3f15.6)') this%Zmean(i),this%Zvar(j),this%output_data(i,j,1,var)
+                  write(ftest,'(3es12.5)') this%Zmean(i),this%Zvar(j),this%output_data(i,j,1,var)
                end do
             end do
          end if
