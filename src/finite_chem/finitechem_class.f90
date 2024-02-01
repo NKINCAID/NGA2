@@ -920,33 +920,33 @@ contains
                !  this%diff(i,j,k,isc_ENTH)=this%lambda(i,j,k)/this%cp(i,j,k)
 
                ! Thermal diffusivity for temperature
-               this%diff(i, j, k, nspec1) = this%lambda(i, j, k)/this%cp(i, j, k)
+               this%diff(i, j, k, :) = this%lambda(i, j, k)/this%cp(i, j, k)
 
-               ! ---- Species diffusivity ---- !
-               ! Inverse of binary diffusion coefficients
-               call fcmech_get_invDij(invDij, Tmix, this%Pthermo)
+               ! ! ---- Species diffusivity ---- !
+               ! ! Inverse of binary diffusion coefficients
+               ! call fcmech_get_invDij(invDij, Tmix, this%Pthermo)
 
-               ! Constant terms
-               Ys = this%SC(i, j, k, 1:nspec)
-               YOverW = Ys/W_sp
-               sumY = sum(Ys)
+               ! ! Constant terms
+               ! Ys = this%SC(i, j, k, 1:nspec)
+               ! YOverW = Ys/W_sp
+               ! sumY = sum(Ys)
 
-               ! Compute mixture-average diffusion coefficient for each species
-               do n = 1, nspec
+               ! ! Compute mixture-average diffusion coefficient for each species
+               ! do n = 1, nspec
 
-                  ! Denominator
-                  sumDiff = sum(YOverW*invDij(n, :))
+               !    ! Denominator
+               !    sumDiff = sum(YOverW*invDij(n, :))
 
-                  if (sumDiff .gt. 1.0e-15_WP) then
-                     ! Diffusion is well defined
-                     this%diff(i, j, k, n) = (sumY - Ys(n))/(Wmix*sumDiff);
-                  else
-                     ! Diffusion is ill defined
-                     sumDiff = sum(invDij(n, :)/W_sp)
-                     this%diff(i, j, k, n) = (real(nspec, WP))/(Wmix*sumDiff)
-                  end if
-                  this%diff(i, j, k, n) = this%rho(i, j, k)*this%diff(i, j, k, n)
-               end do
+               !    if (sumDiff .gt. 1.0e-15_WP) then
+               !       ! Diffusion is well defined
+               !       this%diff(i, j, k, n) = (sumY - Ys(n))/(Wmix*sumDiff);
+               !    else
+               !       ! Diffusion is ill defined
+               !       sumDiff = sum(invDij(n, :)/W_sp)
+               !       this%diff(i, j, k, n) = (real(nspec, WP))/(Wmix*sumDiff)
+               !    end if
+               !    this%diff(i, j, k, n) = this%rho(i, j, k)*this%diff(i, j, k, n)
+               ! end do
             end do
          end do
       end do

@@ -552,8 +552,8 @@ contains
          call fs%add_bcond(name='xm_outflow',type=neumann,face='x',dir=-1,canCorrect=.True.,locator=xm_locator)
          call fs%add_bcond(name='xp_outflow',type=neumann,face='x',dir=+1,canCorrect=.True.,locator=xp_locator)
          ! Configure pressure solver
-         ps=hypre_str(cfg=cfg,name='Pressure',method=smg,nst=7)
-         ps%maxlevel=18
+         ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
+         ps%maxlevel = 12
          call param_read('Pressure iteration',ps%maxit)
          call param_read('Pressure tolerance',ps%rcvg)
          ! Setup the flow solver
@@ -768,7 +768,7 @@ contains
                   call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
                   sc%rho(i,j,k)   =exp(trnprop(2))
                   fs%visc(i,j,k)  =trnprop(3)
-                  sc%diff(i,j,k,:)=trnprop(4)
+                  sc%diff(i,j,k,:)=trnprop(4) * sc%rho(i,j,k)
 
                   ! Map the neural network scalars to Y (for visualization purposes at t=0)
                   call aen%decode(sc%SC(i,j,k,:),TYS)
@@ -869,7 +869,8 @@ contains
          call ens_out%add_scalar('divergence' ,fs%div)
          call ens_out%add_scalar('density'    ,sc%rho)
          call ens_out%add_scalar('viscosity'  ,fs%visc)
-         call ens_out%add_scalar('temperature',T)
+         call ens_out%add_scalar('T',T)
+         call ens_out%add_scalar('thermal_diff',sc%diff(:, :, :, 1))
          do iY=1,n_Y
             call ens_out%add_scalar('Y_'//Y_name(iY),Y(:,:,:,iY))
          end do
