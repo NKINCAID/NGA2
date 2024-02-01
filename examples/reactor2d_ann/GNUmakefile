@@ -1,4 +1,5 @@
 # NGA location if not yet defined
+NGA_HOME ?= ../..
 
 # Compilation parameters
 PRECISION = DOUBLE

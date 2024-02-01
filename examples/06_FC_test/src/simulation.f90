@@ -527,7 +527,7 @@ contains
       
       ! Create a low-Mach flow solver with bconds
       create_velocity_solver: block
-         use hypre_str_class, only: pcg_pfmg, smg
+         use hypre_str_class, only: pcg_pfmg, smg, pcg_pfmg2
          use lowmach_class, only: dirichlet, clipped_neumann, slip, neumann
          real(WP) :: visc
          ! Create flow solver
@@ -542,7 +542,7 @@ contains
          call fs%add_bcond(name='xp_outflow', type=neumann, face='x', dir=+1, canCorrect=.True., locator=xp_locator)
          ! ! Configure pressure solver
          ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
-         ps%maxlevel = 18
+         ps%maxlevel = 12
          call param_read('Pressure iteration', ps%maxit)
          call param_read('Pressure tolerance', ps%rcvg)
          ! Configure implicit velocity solver
@@ -896,7 +896,7 @@ contains
                ! Build mid-time scalar
                fc%SC = 0.5_WP*(fc%SC + fc%SCold)
 
-               call fc%diffusive_source(time%dt)
+               ! call fc%diffusive_source(time%dt)
                ! Explicit calculation of drhoSC/dt from scalar equation
                call fc%get_drhoSCdt(resSC, fs%rhoU, fs%rhoV, fs%rhoW)
 
@@ -913,7 +913,7 @@ contains
                      do j = fc%cfg%jmino_, fc%cfg%jmaxo_
                         do i = fc%cfg%imino_, fc%cfg%imaxo_
                            if (nsc .eq. nspec + 1) then
-                              if (SCtmp(i, j, k, nsc) .le. 250.0_WP .or. SCtmp(i, j, k, nsc) .ge. 4000.0_WP) then
+                              if (SCtmp(i, j, k, nsc) .le. 649.0_WP .or. SCtmp(i, j, k, nsc) .ge. 3000.0_WP) then
                                  flag(i, j, k, nsc) = .true.
                               else
                                  flag(i, j, k, nsc) = .false.

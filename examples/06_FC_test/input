@@ -1,25 +1,24 @@
 # Parallelization
-Partition : 8 1 1
+Partition : 16 1 1
 
-# Mesh definition
-Lx : 0.01
-Ly : 0.01
-Lz : 0.0001
-nx : 200
-ny : 200
+Lx : 1e-3 # 0.01
+Ly : 1e-3 # 0.01
+Lz : 1e-5
+nx : 100 # 100
+ny : 100 # 100
 nz : 1
 
 # Initial conditions
-ks/ko                   : 5
+ks/ko                   : 1.0
 kc/ks                   : 3
-Buffer region length    : 0.003 # 0.0025
+Buffer region length    : 3e-4 # 0.0025
 Instance number         : 42
-Velocity fluctuation    : 0.75
-Energetic scale         : 0.001
-Dissipative scale       : 0.0001
+Velocity fluctuation    : 0.5
+Energetic scale         : 0.00015
+Dissipative scale       : 0.00001
 Dissipation             : 1e-3
 
-Temperature range       : 400
+Temperature range       : 550
 Temperature lower bound : 650
 Buffer temperature      : 650
 
@@ -41,11 +40,11 @@ Bundle Refinement : 2
 
 # Time integration
 Time stepping     : explicit
-Max timestep size :	1e-5
-Max cfl number    :	0.8
-Max time          : 5e-5
-Max iterations    : 1000
-Sub-iterations    : 5
+Max timestep size :	1e-6
+Max cfl number    :	0.1
+Max time          : 1e-3
+Max iterations    : 10000
+Sub-iterations    : 7
 
 # Pressure solver
 Pressure tolerance : 1e-10
