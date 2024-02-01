@@ -34,8 +34,6 @@ Faded region length  : 0.05
 
 Velocity fluctuation : 0.1
 Energetic scale      : 0.3
-Dissipative scale    : 0.01
-Dissipation          : 1e-3
 
 # Time integration
 Time stepping     : explicit

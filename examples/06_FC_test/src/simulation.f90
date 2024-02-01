@@ -365,7 +365,7 @@ contains
    end subroutine doubledelta_SCinit
 
    !> Initialize PP spectrum for velocity
-   subroutine PP_spectrum(Lbu,Lfd,Ut,le,ld,epsilon)
+   subroutine PP_spectrum(Lbu,Lfd,Ut,le)
       use precision
       use param,    only: param_read
       use random,   only: random_normal,random_uniform
@@ -377,7 +377,7 @@ contains
       ! Turbulent velocity
       real(WP) :: Ut
       ! Spectrum type
-      real(WP) :: le,ld,epsilon
+      real(WP) :: le
       ! Spectrum computation
       real(WP) :: psr,ps1,ps2,ke,dk,kc,kk,kx,ky,kz,kk2
       real(WP) :: spec_amp,eps,amp_disc,energy_spec
@@ -699,15 +699,13 @@ contains
          use lowmach_class, only: bcond
          use parallel,      only: MPI_REAL_WP
          integer  :: n,i,j,k,ierr
-         real(WP) :: Ut,le,ld,epsilon
+         real(WP) :: Ut,le
          type(bcond), pointer :: mybc
          ! Read-in the inputs
          call param_read('Velocity fluctuation',Ut)
          call param_read('Energetic scale',le)
-         call param_read('Dissipative scale',ld)
-         call param_read('Dissipation',epsilon)
          ! Initialize the global velocity field
-         if (fs%cfg%amRoot) call PP_spectrum(L_buffer,0.0_WP,Ut,le,ld,epsilon)
+         if (fs%cfg%amRoot) call PP_spectrum(L_buffer,0.0_WP,Ut,le)
          ! Communicate information
          call MPI_BCAST(U_init,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
          call MPI_BCAST(V_init,fs%cfg%nx*fs%cfg%ny*fs%cfg%nz,MPI_REAL_WP,0,fs%cfg%comm,ierr)
