@@ -114,14 +114,14 @@ contains
          ! Get the reaction source terms
          fc%SRCchem=0.0_WP
          call fc%react(time%dt)
-         print*,'Temperature source term = ',fc%SRCchem(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,fc%nscalar)
 
          ! Perform sub-iterations
          do while (time%it.le.time%itmax)
 
-            ! Perform time integration
+            ! Perform Euler time integration
             do isc=1,fc%nscalar
-               fc%SC(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)=fc%SCold(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)+fc%rho(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_)*fc%SRCchem(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)*time%dt
+               ! fc%SC(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)=fc%SCold(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)+fc%rho(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_)*fc%SRCchem(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)
+               fc%SC(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)=fc%SCold(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)+fc%SRCchem(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)
             end do
 
             ! Update density

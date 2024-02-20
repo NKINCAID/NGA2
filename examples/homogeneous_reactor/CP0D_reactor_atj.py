@@ -114,58 +114,6 @@ ax[1].set(
 
 ax[1].grid()
 
-# ax[1, 0].plot(
-#     states.t * 1000,
-#     states.Y[:, gas.species_index('N2')],
-#     lw=lw,
-#     label="Cantera",
-#     color='blue',
-# )
-
-# ax[1, 0].plot(
-#     time_array * 1000,
-#     Y_N2_array,
-#     lw=lw,
-#     ls="--",
-#     label="NGA2",
-#     color='red'
-# )
-
-# ax[1, 0].set(
-#     xlabel="Time [ms]",
-#     ylabel="N2 mass fraction [1]",
-#     xlim=[0, 10]
-# )
-
-# ax[1, 0].ticklabel_format(axis='y', style='sci', scilimits=(0,0))
-
-# ax[1, 1].plot(
-#     states.t * 1000,
-#     states.Y[:, gas.species_index('HMN')],
-#     lw=lw,
-#     label="Cantera",
-#     color='blue',
-# )
-
-# ax[1, 1].plot(
-#     time_array * 1000,
-#     Y_HMN_array,
-#     lw=lw,
-#     ls="--",
-#     label="NGA2",
-#     color='red'
-# )
-
-# ax[1, 1].set(
-#     xlabel="Time [ms]",
-#     ylabel="HMN mass fraction [1]",
-#     xlim=[0, 10]
-# )
-
-# ax[1, 1].ticklabel_format(axis='y', style='sci', scilimits=(0,0))
-
-# ax[1, 1].grid()
-
 plt.tight_layout()
 
 plt.show()
