@@ -805,7 +805,7 @@ contains
          use lowmach_class, only: bcond
          use parallel,      only: MPI_REAL_WP
          integer  :: n,i,j,k,ierr
-         real(WP) :: Ut,le,ld,epsilon
+         real(WP) :: Ut,le
          type(bcond), pointer :: mybc
          ! Read-in the inputs
          call param_read('Velocity fluctuation',Ut)

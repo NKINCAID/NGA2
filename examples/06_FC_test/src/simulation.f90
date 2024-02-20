@@ -72,6 +72,9 @@ module simulation
    !> Statistics
    real(WP) :: rhomean,Tmean,Trms,Tmax
 
+   !> Initialization zone
+   integer :: imin,imax,jmin,jmax,kmin,kmax
+
 contains
 
    !> Function that localizes y- boundary
@@ -559,8 +562,10 @@ contains
          fc = finitechem(cfg=cfg, scheme=bquick, name='fc')
          ! Scheduler
          call param_read('Use scheduler',fc%use_scheduler)
-         call param_read('Bundle Refinement',bundleref)
-         call fc%scheduler_init(bundleref)
+         if (fc%use_scheduler) then
+            call param_read('Bundle Refinement',bundleref)
+            call fc%scheduler_init(bundleref)
+         end if
          ! Outflow on the right
          call fc%add_bcond(name='xm_outflow', type=neumann, locator=xm_scalar, dir='-x')
          call fc%add_bcond(name='xp_outflow', type=neumann, locator=xp_locator, dir='+x')
@@ -625,7 +630,6 @@ contains
          integer :: n, i, j, k, ierr
          character(len=str_medium) :: fuel, oxidizer
          real(WP) :: moles_fuel
-         integer  :: imin,imax,jmin,jmax,kmin,kmax
          real(WP) :: tmpY
          real(WP) :: h_init,T_buf,T_range,T_min
          type(bcond), pointer :: mybc
@@ -1096,6 +1100,87 @@ contains
          call consfile%write()
 
       end do
+
+      ! Sample data for 0D simulations
+      sample_data: block
+         use param, only: param_read
+         use precision, only: SP
+         use messager, only: die
+         use parallel, only: info_mpiio,MPI_REAL_SP
+         use mpi_f08
+         logical :: smpld
+         integer :: iunit,ierr,isc,counter,ndata
+         character(len=str_medium) :: filename
+         type(MPI_File) :: ifile
+         integer(kind=MPI_OFFSET_KIND) :: my_offset
+         type(MPI_Status):: status
+         real(SP), dimension(:,:), allocatable :: spbuff
+         integer, dimension(:), allocatable :: data_counts
+         call param_read('Sample data',smpld)
+         if (smpld) then
+            ! Binary file name
+            call param_read('Sample data file name',filename)
+            ! Root process starts writing the file header
+            if (fc%cfg%amRoot) then
+               ! Open the file
+               open(newunit=iunit,file=trim(filename),form='unformatted',status='replace',access='stream',iostat=ierr)
+               if (ierr.ne.0) call die('Could not open file '//trim(filename))
+               ! Pressure
+               write(iunit) fc%Pthermo
+               ! Number of data sets
+               write(iunit) (imax-imin+1)*(jmax-jmin+1)*(kmax-kmin+1)
+               ! Number of species
+               write(iunit) nspec
+               ! Species names
+               do isc=1,nspec
+                  write(iunit) len(trim(spec_name(isc)))
+                  write(iunit) trim(spec_name(isc))
+               end do
+               ! Close the file
+               close(iunit)
+            end if
+            ! Number of cells for each processor
+            ndata=0
+            do k=fc%cfg%kmin_,fc%cfg%kmax_
+               do j=fc%cfg%jmin_,fc%cfg%jmax_
+                  do i=fc%cfg%imin_,fc%cfg%imax_
+                     if ((i.ge.imin).and.(i.le.imax).and.(j.ge.jmin).and.(j.le.jmax).and.(k.ge.kmin).and.(k.le.kmax)) then
+                        ndata=ndata+1
+                     end if
+                  end do
+               end do
+            end do
+            allocate(data_counts(0:fc%cfg%nproc-1))
+            call MPI_Allgather(ndata,1,MPI_INTEGER,data_counts,1,MPI_INTEGER,fc%cfg%comm,ierr)
+            ! Prepare buffer
+            allocate(spbuff(nspec+1,ndata))
+            counter=0
+            do k=fc%cfg%kmin_,fc%cfg%kmax_
+               do j=fc%cfg%jmin_,fc%cfg%jmax_
+                  do i=fc%cfg%imin_,fc%cfg%imax_
+                     if ((i.ge.imin).and.(i.le.imax).and.(j.ge.jmin).and.(j.le.jmax).and.(k.ge.kmin).and.(k.le.kmax)) then
+                        counter=counter+1
+                        do isc=1,nspec+1
+                           spbuff(isc,counter)=real(fc%SC(i,j,k,isc),SP)
+                        end do
+                     end if
+                  end do
+               end do
+            end do
+            ! Open the file
+            call MPI_FILE_OPEN(fc%cfg%comm,trim(filename),IOR(MPI_MODE_WRONLY,MPI_MODE_APPEND),info_mpiio,ifile,ierr)
+            if (ierr.ne.0) call die('Problem encountered while parallel writing data file '//trim(filename))
+            ! Calculate offset for each processor
+            call MPI_File_get_size(ifile,my_offset,ierr)
+            my_offset=my_offset+sum(data_counts(0:fc%cfg%rank-1))*(nspec+1)*sizeof(spbuff(1,1))
+            ! Let all processors know where to start writing
+            call MPI_FILE_SET_VIEW(ifile,my_offset,MPI_REAL_SP,MPI_REAL_SP,'native',MPI_INFO_NULL,ierr)
+            ! Write data
+            call MPI_FILE_WRITE_ALL(ifile,spbuff(:,1:counter),(nspec+1)*counter,MPI_REAL_SP,status,ierr)
+            ! Close the file
+            call MPI_FILE_CLOSE(ifile,ierr)
+         end if
+      end block sample_data
 
    end subroutine simulation_run
 
