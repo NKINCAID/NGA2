@@ -1,0 +1,26 @@
+# Parallelization
+Partition :	1 1 1
+
+# Mesh definition
+Lx : 1
+Ly : 1
+Lz : 1
+nx : 1
+ny : 1
+nz : 1
+
+# Initial conditions
+IC file name : IC_CP0D_ATJ
+Temperature     : 750
+Initial HMN     : 1.0810837e-02
+Initial XC12H26 : 5.2061660e-02
+Initial N2      : 7.1877706e-01
+Initial O2      : 2.1835044e-01
+Pressure        : 3.4e6
+
+# Time integration
+Max timestep size :	1e-6
+Max time          : 0.01
+
+# Ensight output
+Ensight output period : 1e-1

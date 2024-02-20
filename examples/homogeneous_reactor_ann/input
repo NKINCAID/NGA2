@@ -2,11 +2,11 @@
 Partition :	1 1 1
 
 # Mesh definition
-Lx : 10
-Ly : 5
-Lz : 0.01953125
-nx : 512
-ny : 256
+Lx : 1
+Ly : 1
+Lz : 1
+nx : 1
+ny : 1
 nz : 1
 
 # Neural network data files

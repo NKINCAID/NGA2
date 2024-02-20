@@ -29,7 +29,7 @@ VPATH_LOCATIONS   += $(Ulocs)
 include $(NGA_HOME)/tools/GNUMake/Make.defs
 
 # Include NGA base code
-Bdirs := core data transform solver config grid libraries ann
+Bdirs := core data transform solver config grid libraries dvode variable_density finite_chem
 Bpack += $(foreach dir, $(Bdirs), $(NGA_HOME)/src/$(dir)/Make.package)
 include $(Bpack)
 
@@ -38,6 +38,9 @@ ifdef Ulocs
    $(info Taking user code from: $(Ulocs))
 endif
 $(info Taking base code from: $(Bdirs))
+
+# Ignore MPI send/recv argument type mismatch error
+F90FLAGS += -fallow-argument-mismatch
 
 # Target definition
 all: $(executable)
