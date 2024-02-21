@@ -49,7 +49,7 @@ contains
 
       ! Initialize time tracker
       initialize_timetracker: block
-         time=timetracker(amRoot=cfg%amRoot,name='homogeneous_reactor_ann')
+         time=timetracker(amRoot=cfg%amRoot,name='homogeneous_reactor')
          call param_read('Max timestep size',time%dtmax)
          call param_read('Max time',time%tmax)
          time%dt=time%dtmax
@@ -120,7 +120,6 @@ contains
 
             ! Perform Euler time integration
             do isc=1,fc%nscalar
-               ! fc%SC(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)=fc%SCold(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)+fc%rho(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_)*fc%SRCchem(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)
                fc%SC(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)=fc%SCold(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)+fc%SRCchem(fc%cfg%imin_,fc%cfg%jmin_,fc%cfg%kmin_,isc)
             end do
 
