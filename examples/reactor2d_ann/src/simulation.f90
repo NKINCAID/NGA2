@@ -768,7 +768,7 @@ contains
                   call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
                   sc%rho(i,j,k)   =exp(trnprop(2))
                   fs%visc(i,j,k)  =trnprop(3)
-                  sc%diff(i,j,k,:)=trnprop(4) * sc%rho(i,j,k)
+                  sc%diff(i,j,k,:)=trnprop(4)*sc%rho(i,j,k)
 
                   ! Map the neural network scalars to Y (for visualization purposes at t=0)
                   call aen%decode(sc%SC(i,j,k,:),TYS)
@@ -1023,7 +1023,7 @@ contains
                      call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
                      sc%rho(i,j,k)   =exp(trnprop(2))
                      fs%visc(i,j,k)  =trnprop(3)
-                     sc%diff(i,j,k,:)=trnprop(4)
+                     sc%diff(i,j,k,:)=trnprop(4)*sc%rho(i,j,k)
                   end do
                end do
             end do
