@@ -1,0 +1,210 @@
+# Parallelization
+Partition : 1 1 1
+
+# Mesh definition
+Lx : 0.01
+Ly : 0.01
+Lz : 0.0001
+nx : 1
+ny : 1
+nz : 1
+
+# Initial conditions
+ks/ko                : 5
+kc/ks                : 3
+Buffer region length : 0.0
+Faded region length  : 0.0
+
+!Initial HMN           :    1.0810837e-02
+!Initial XC12H26       :    5.2061660e-02
+!Initial N2            :    7.1877706e-01
+!Initial O2            :    2.1835044e-01
+
+
+!Initial N2            :    7.1879940e-01
+!Initial O2            :    2.1836674e-01
+!Initial NXC12H26      :    6.2833859e-02
+
+! Initial temperature  : 750
+Buffer temperature   : 500
+
+Forcing constant     : 1.0
+Velocity fluctuation : 0.1
+Energetic scale      : 0.3
+Dissipative scale    : 0.01
+Dissipation          : 1e-3
+Pressure = 3.4e6
+
+# Time integration
+Time stepping     : explicit
+Max timestep size :	1e-5
+Max cfl number    :	0.8
+Max time          : 1e-2
+Max iterations    : 1000
+Sub-iterations    : 5
+
+# Pressure solver
+Pressure tolerance : 1e-10
+Pressure iteration : 100
+
+# Ensight output
+Ensight output period : 1e-5
+
+Instance number : 42
+
+
+Initial temperature    :    1.3234560e+03
+
+
+Initial HMN                     :    8.8335931435917108e-06
+Initial X1C11H23                :    7.3952993755538128e-11
+Initial XC12H26                 :    1.0967295930949810e-07
+Initial X1C12H25                :    1.7053166708096471e-10
+Initial X2C12H25                :    5.3232373595459425e-09
+Initial X3C12H25                :    6.7344081217601629e-12
+Initial X4C12H25                :    5.0233709581283702e-12
+Initial XC12H25O2X1             :    1.3490016783940812e-11
+Initial XC12H25O2X2             :    2.5839390480055874e-10
+Initial XC12H25O2X3             :    7.5783834280131884e-13
+Initial XC12OOH1X2              :    1.0882388718811904e-13
+Initial XC12OOH1X3              :    3.3365372953415322e-14
+Initial XC12OOH2X1              :    4.6262507178165746e-12
+Initial XC12OOH2X2P             :    1.8187269092256479e-12
+Initial XC12OOH3X1              :    1.6780381754502478e-14
+Initial XC12H24X3               :    2.6065534448164074e-04
+Initial XC12OOH1X2O2            :    3.5056594981658849e-15
+Initial XC12OOH2X1O2            :    2.4166022062989515e-13
+Initial XC12OOH2X2PO2           :    2.3561835153434901e-14
+Initial XC12H23X42              :    7.2733072878980942e-04
+Initial X1C11H22                :    2.6186407827023860e-04
+Initial X2C11H22                :    8.3630392743390825e-05
+Initial XC11H21                 :    3.8596765568508760e-08
+Initial XC12Q12XR2P             :    6.9796013548373277e-17
+Initial XC12Q12XR3              :    5.7124453388701746e-17
+Initial XC12Q13XR1              :    7.8069490840152183e-18
+Initial XC12Q13XR1P             :    1.5673971204736123e-17
+Initial XC12Q13XR2              :    1.8084210710037212e-19
+Initial HMNXR2                  :    1.2714560980863410e-10
+Initial HMNXR3                  :    3.1360585431749587e-11
+Initial HMNXR5                  :    9.9710760879882015e-12
+Initial HMNXR6                  :    1.0057594928993946e-10
+Initial CC15H31                 :    2.1724271621699772e-11
+Initial FC12H25                 :    1.6414872496265429e-09
+Initial IC9XR1                  :    4.8027627642206014e-11
+Initial AC15H29                 :    1.5727261935745109e-09
+Initial I24C7D13                :    3.2136575643301624e-03
+Initial N2                      :    7.1876979856843881e-01
+Initial H2                      :    1.9653173916851069e-04
+Initial H                       :    8.4795290753194130e-08
+Initial O2                      :    1.6932984388572675e-01
+Initial O                       :    5.9549761200766848e-07
+Initial H2O                     :    2.7136359586466666e-02
+Initial OH                      :    6.0382127433893398e-06
+Initial OHV                     :    1.3028912785005129e-14
+Initial H2O2                    :    4.4300954770569640e-04
+Initial HO2                     :    4.6432386241875012e-04
+Initial CO                      :    3.2207049618024397e-02
+Initial CO2                     :    1.3603885697263079e-03
+Initial CH4                     :    1.1172311036412974e-03
+Initial CH3                     :    4.1293990731756304e-05
+Initial C                       :    1.2212327304141536e-18
+Initial CH                      :    3.7853668639094924e-14
+Initial CH3O2H                  :    2.4764175416552945e-08
+Initial CH3O2                   :    1.1517080930030005e-05
+Initial CH3OH                   :    2.9595576526281691e-04
+Initial CH3O                    :    5.7301026763914929e-07
+Initial CH2OH                   :    2.6038228100809809e-08
+Initial CH2O                    :    4.5928328923902839e-03
+Initial HCO                     :    1.2250525341654712e-06
+Initial C2H6                    :    3.8591410686396088e-04
+Initial C2H5                    :    2.9701711778879359e-05
+Initial C2H5O2H                 :    6.1974700464707530e-09
+Initial C2H5O2                  :    1.0005516438352677e-05
+Initial C2H4                    :    6.5695663221799873e-03
+Initial C2H3                    :    1.9250149530652954e-08
+Initial C2H3OO                  :    2.6543727642067767e-08
+Initial C2H2                    :    1.1373583716708378e-04
+Initial C2H                     :    6.3231743951252382e-11
+Initial CH3CHO                  :    6.9136566569749018e-04
+Initial CH2CO                   :    2.6533352253612638e-04
+Initial HCCO                    :    1.2783074890313905e-07
+Initial IC3H7                   :    1.3196721874580071e-06
+Initial C3H6                    :    6.3497994640992440e-03
+Initial C3H5XA                  :    1.6564217760920360e-04
+Initial C3H5XS                  :    9.7899519727947504e-07
+Initial C3H5XT                  :    7.9085059820271401e-07
+Initial C3H6OH1X2               :    1.6796600365489890e-07
+Initial AC3H5OOH                :    4.0702054520201367e-07
+Initial C3H3                    :    1.7298294327768940e-05
+Initial C3H3O                   :    2.2881017896693567e-04
+Initial C2H3CO                  :    7.2882910802223705e-12
+Initial CH3COCH2O               :    6.2125813415268913e-14
+Initial TC4H9O                  :    1.1204770157498118e-13
+Initial IC4H8O                  :    3.0410420910833457e-04
+Initial IC3H7CHO                :    4.7132079979773212e-04
+Initial TC3H6OCHO               :    4.6503904380997096e-13
+Initial IC3H5CO                 :    1.7547431029162213e-07
+Initial IC3H4CHOXA              :    2.6309803354915043e-05
+Initial TC4H9O2                 :    5.2243804452010587e-08
+Initial IC4H8O2HXT              :    2.8312384152248537e-10
+Initial TC4H8O2HXI              :    8.1796894049669492e-10
+Initial IC4H7OOH                :    1.0162591462349533e-07
+Initial TC4H9O2H                :    1.2969376533580699e-12
+Initial IC4H7                   :    4.6512421333498416e-05
+Initial IC4H7XI1                :    7.4092635485969976e-07
+Initial NEOC5H11                :    3.5964879651161273e-08
+Initial NEOC5H11O2H             :    5.1330195644940551e-14
+Initial NEOC5H11O2              :    2.8037249661375731e-09
+Initial NEOC5H11O               :    3.1099613658246626e-14
+Initial NEOC5H10OOH             :    1.1733473572719451e-10
+Initial NEOC5H10OOHXO2          :    1.4508820237019144e-11
+Initial NEOC5KET                :    3.7140454428248920e-13
+Initial NEOC5KETOX              :    2.8857953806448804e-14
+Initial AC5H10                  :    7.6570886440868562e-04
+Initial IC6D13                  :    4.8556413324872183e-03
+Initial IC8X1R                  :    7.4745518088587332e-11
+Initial IC8X4R                  :    8.1083243561724625e-11
+Initial IC8X5R                  :    4.9258628754392961e-10
+Initial IC8D3X5R                :    2.7019778558745645e-07
+Initial IC8D4X5R                :    1.5884085143583382e-05
+Initial IC8OOH5X3O2R            :    4.4203051223524915e-14
+Initial IC8KET5X3               :    4.4449471960592827e-15
+Initial IC8D4X5OOH              :    2.0718087473500547e-09
+Initial IC8KET5X3O              :    8.4499756070025393e-18
+Initial I24C7D1                 :    1.1121551075754120e-03
+Initial NEC7D3                  :    7.8914639278321536e-04
+Initial NEC7D4                  :    1.1532651783124384e-04
+Initial NEC7Y4                  :    6.6628950955536538e-05
+Initial IC8D4X1R                :    4.5503837285358577e-09
+Initial IC6D13X1AR              :    1.2800334683611215e-05
+Initial NEC7D4X3OR              :    3.9405051958568508e-13
+Initial TC4H9CO3H               :    1.7031188566858061e-12
+Initial C6H11GL1G               :    4.5589061559242242e-05
+Initial C16H33GL1G              :    1.6633400702271898e-10
+Initial C12H25O4GL1G            :    1.2435521918022733e-15
+Initial C7H13GL1G               :    1.6570464434018479e-06
+Initial C7H15GL1G               :    2.4249320070631725e-09
+Initial C8H16OGL1G              :    7.6236748448399872e-04
+Initial C8H17O2GL1G             :    1.9332163606001235e-11
+Initial C5H9O3GL1G              :    6.5040607119932472e-09
+Initial C5H9OGL1G               :    1.8608929770322433e-08
+Initial C5H10OGL1G              :    4.7275201046646797e-04
+Initial C4H8GL1G                :    5.2724628894185365e-03
+Initial C4H7O3GL1G              :    9.1448180311875861e-09
+Initial C4H6OGL1G               :    2.1300690041868723e-03
+Initial C4H7OGL1G               :    9.5830459828705963e-08
+Initial C4H9GL1G                :    3.4334712207617399e-07
+Initial C3H6OGL1G               :    1.5499381016644818e-03
+Initial C3H4GL1G                :    1.5008924057469709e-03
+Initial C3H4OGL1G               :    2.0720548475080625e-06
+Initial C3H5OGL1G               :    1.9795894572282455e-08
+Initial C2H3OGL1G               :    8.8352510821064631e-07
+Initial C2H5OGL1G               :    1.8938754770111886e-09
+Initial CH2GL1G                 :    1.6113856533256689e-09
+Initial C8H16GL1G               :    1.7177374950748595e-04
+Initial C15H30GL1G              :    3.1256491555321912e-05
+Initial C16H32OGL1G             :    2.0579664856575360e-05
+Initial C16H33O2GL1G            :    1.1781752856439647e-12
+Initial C12H24O3GL1G            :    3.8543560137094731e-14
+Initial C12H24OGL1G             :    4.0868310927999934e-03
+Initial C12H25OGL1G             :    5.5993447882885004e-06
