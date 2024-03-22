@@ -552,7 +552,7 @@ contains
          call fs%add_bcond(name='xm_outflow',type=neumann,face='x',dir=-1,canCorrect=.True.,locator=xm_locator)
          call fs%add_bcond(name='xp_outflow',type=neumann,face='x',dir=+1,canCorrect=.True.,locator=xp_locator)
          ! Configure pressure solver
-         ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
+         ps = hypre_str(cfg=cfg, name='Pressure', method=pcg_pfmg, nst=7)
          ps%maxlevel = 12
          call param_read('Pressure iteration',ps%maxit)
          call param_read('Pressure tolerance',ps%rcvg)
@@ -564,19 +564,24 @@ contains
       ! Create neural networks
       create_ann: block
          use string, only: str_medium
-         character(len=str_medium) :: aenfname,csnfname,trnfname
+         character(len=str_medium) :: netmodel,aenfname,csnfname,trnfname,netpath
          ! Read-in the data file names
+         netpath='networks/'
+         if (param_exists('Network model')) then
+            call param_read('Network model',netmodel)
+            netpath=trim(netpath)//trim(netmodel)//'/'
+         end if
          call param_read('Auto encoder'        ,aenfname)
          call param_read('Chemical source'     ,csnfname)
          call param_read('Transport properties',trnfname)
          ! The auto encoder network
-         aen=aencodernet(cfg=cfg,fdata=aenfname,name='Auto encoder network')
+         aen=aencodernet(cfg=cfg,fdata=trim(netpath)//trim(aenfname),name='Auto encoder network')
          call aen%print()
          ! The chemical source network
-         csn=chsourcenet(cfg=cfg,fdata=csnfname,name='Chemical source network')
+         csn=chsourcenet(cfg=cfg,fdata=trim(netpath)//trim(csnfname),name='Chemical source network')
          call csn%print()
          ! The transport properties network
-         trn=trnsportnet(cfg=cfg,fdata=trnfname,name='Transport properties network')
+         trn=trnsportnet(cfg=cfg,fdata=trim(netpath)//trim(trnfname),name='Transport properties network')
          call trn%print()
          ! Species sub-array size
          nY_sub=size(aen%vectors(aen%ivec_spec_inds)%vector)
