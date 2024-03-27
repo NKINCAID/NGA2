@@ -25,7 +25,7 @@ Initial N2              : 7.1877706e-01
 Initial O2              : 2.1835044e-01
 
 # Neural network data files
-Network model        : nga_ic_model # nga_ic_model, nga_ic2_model, nga_pasr_model
+Network model        : nga_pasr2_model # nga_ic_model, nga_ic2_model, nga_ic3_model, nga_pasr_model, nga_pasr2_model
 Auto encoder         : auto_encoder
 Chemical source      : chem_sources
 Transport properties : fluid_trnspt
