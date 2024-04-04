@@ -6,9 +6,7 @@ module simulation
    use hypre_str_class,     only: hypre_str
    use lowmach_class,       only: lowmach
    use multivdscalar_class, only: multivdscalar
-   use aencodernet_class,   only: aencodernet
-   use chsourcenet_class,   only: chsourcenet
-   use trnsportnet_class,   only: trnsportnet
+   use ann_class,           only: ann
    use timetracker_class,   only: timetracker
    use ensight_class,       only: ensight
    use event_class,         only: event
@@ -24,10 +22,10 @@ module simulation
    type(timetracker),   public :: time
 
    !> Artificial neural networks
-   type(aencodernet) :: aen
-   type(chsourcenet) :: csn
-   type(trnsportnet) :: trn
-   integer :: nY_sub
+   type(ann) :: aen    !< Auto-encoder
+   type(ann) :: csn    !< Source terms
+   type(ann) :: trn    !< Transport properties
+   integer   :: nY_sub !< The number of input species to the auto-encoder
 
    !> Chemistry
    character(len=str_medium), dimension(:), allocatable :: spec_name
@@ -49,9 +47,11 @@ module simulation
    real(WP), dimension(:,:,:),   allocatable :: tmpfield              !< Temporary field for statistics
    real(WP), dimension(:),       allocatable :: Y_sub                 !< Mass fraction of species that are used by networks
    real(WP), dimension(:),       allocatable :: Y_init                !< Initial mass fractions
-   real(WP), dimension(:),       allocatable :: hY                    !< Enthalpy and mass fractions of sub species
-   real(WP), dimension(:),       allocatable :: TYS                   !< Temperature, mass fractions, and source terms of sub species
-   real(WP), dimension(4)                    :: trnprop,trnprop_tmp   !< Transport properties: Temperature, logarithm of density, viscosity, and scalar diffusivity
+   real(WP), dimension(:),       allocatable :: TYS                   !< Temperature, mass fractions, and source terms of sub-species
+   real(WP), dimension(4)                    :: trnprop               !< Transport properties: Temperature, logarithm of density, viscosity, and scalar diffusivity
+
+   !> Latent variables
+   integer :: nlatent
 
    !> Post process for species mass fractions
    integer :: n_Y                                                     !< Number of output species
@@ -167,7 +167,6 @@ contains
       use random,  only: random_normal,random_uniform
       use, intrinsic :: iso_c_binding
       implicit none
-
       ! Buffer region lenght
       real(WP),intent(in) :: Lbu
       ! Bounds
@@ -184,7 +183,6 @@ contains
       integer     :: i,j,k,nk,nx,ny,nz
       complex(WP) :: ii=(0.0_WP,1.0_WP)
       real(WP)    :: rand,pi,ke,dk,kc,ks,ksk0ratio,kcksratio,kx,ky,kz,kk,f_phi,kk2
-
       include 'fftw3.f03'
 
       ! Create pi
@@ -320,7 +318,6 @@ contains
       use random,   only: random_normal,random_uniform
       use, intrinsic :: iso_c_binding
       implicit none
-
       ! Buffer and faded region lenght
       real(WP), intent(in) :: Lbu,Lfd
       ! Turbulent velocity
@@ -345,7 +342,6 @@ contains
       ! Fourier coefficients
       integer(KIND=8) :: plan_r2c,plan_c2r
       complex(WP), dimension(:,:,:), pointer :: Uk,Vk
-
       include 'fftw3.f03'
 
       ! Create pi
@@ -552,8 +548,8 @@ contains
          call fs%add_bcond(name='xm_outflow',type=neumann,face='x',dir=-1,canCorrect=.True.,locator=xm_locator)
          call fs%add_bcond(name='xp_outflow',type=neumann,face='x',dir=+1,canCorrect=.True.,locator=xp_locator)
          ! Configure pressure solver
-         ps = hypre_str(cfg=cfg, name='Pressure', method=pcg_pfmg, nst=7)
-         ps%maxlevel = 12
+         ps=hypre_str(cfg=cfg,name='Pressure',method=pcg_pfmg,nst=7)
+         ps%maxlevel=12
          call param_read('Pressure iteration',ps%maxit)
          call param_read('Pressure tolerance',ps%rcvg)
          ! Setup the flow solver
@@ -575,16 +571,17 @@ contains
          call param_read('Chemical source'     ,csnfname)
          call param_read('Transport properties',trnfname)
          ! The auto encoder network
-         aen=aencodernet(cfg=cfg,fdata=trim(netpath)//trim(aenfname),name='Auto encoder network')
+         aen=ann(cfg=cfg,fdata=trim(netpath)//trim(aenfname),name='Auto encoder network')
          call aen%print()
-         ! The chemical source network
-         csn=chsourcenet(cfg=cfg,fdata=trim(netpath)//trim(csnfname),name='Chemical source network')
+         ! Species sub-array and latent space variables sizes
+         nY_sub=size(aen%inp_sub_ind)
+         nlatent=size(aen%encoder_weight,dim=2)
+         ! The source terms network
+         csn=ann(cfg=cfg,fdata=trim(netpath)//trim(csnfname),name='Chemical source network')
          call csn%print()
          ! The transport properties network
-         trn=trnsportnet(cfg=cfg,fdata=trim(netpath)//trim(trnfname),name='Transport properties network')
+         trn=ann(cfg=cfg,fdata=trim(netpath)//trim(trnfname),name='Transport properties network')
          call trn%print()
-         ! Species sub-array size
-         nY_sub=size(aen%vectors(aen%ivec_spec_inds)%vector)
       end block create_ann
 
 
@@ -592,7 +589,7 @@ contains
       create_scalar_solver: block
          use multivdscalar_class, only: dirichlet,neumann,quick,bquick
          ! Create scalar solver
-         sc=multivdscalar(cfg=cfg,scheme=bquick,nscalar=aen%nvar,name='Variable density multi scalar')
+         sc=multivdscalar(cfg=cfg,scheme=bquick,nscalar=nlatent,name='Variable density multi scalar')
          ! Boundary conditions
          call sc%add_bcond(name='ym_outflow',type=neumann,locator=ym_locator_sc,dir='-y')
          call sc%add_bcond(name='yp_outflow',type=neumann,locator=yp_locator_sc,dir='+y')
@@ -617,7 +614,7 @@ contains
          allocate(resSC (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,sc%nscalar))
          allocate(SCtmp (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,sc%nscalar))
          allocate(bqflag(cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_,sc%nscalar))
-         allocate(SC_src(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,aen%nvar)); SC_src=0.0_WP
+         allocate(SC_src(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,nlatent)); SC_src=0.0_WP
          ! Temporary arrays
          allocate(SC_init (sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
          allocate(U_init  (fs%cfg%imin:fs%cfg%imax,fs%cfg%jmin:fs%cfg%jmax,fs%cfg%kmin:fs%cfg%kmax))
@@ -627,7 +624,6 @@ contains
          allocate(T(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
          allocate(Y(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,n_Y))
          allocate(Y_sub(nY_sub))  ; Y_sub=0.0_WP
-         allocate(hY(nY_sub+1))   ; hY=0.0_WP
          allocate(TYS(2*nY_sub+1)); TYS=0.0_WP
          allocate(iY_in_sub(n_Y)) ; iY_in_sub=0
          allocate(Y_init(nspec))  ; Y_init=0.0_WP
@@ -668,7 +664,7 @@ contains
             ! Sub-array used in ANN
             write(output_unit,'(" Sub-array species used in the ann:")',advance='No')
             do iY_sub=1,nY_sub
-               write(output_unit,'(a)',advance='No') ' '//trim(spec_name(int(aen%vectors(aen%ivec_spec_inds)%vector(iY_sub))))
+               write(output_unit,'(a)',advance='No') ' '//trim(spec_name(aen%inp_sub_ind(iY_sub)))
             end do
             write(output_unit,'(" ")')
 
@@ -693,7 +689,7 @@ contains
          if (cfg%amRoot) write(output_unit,'(" Initial mass fractions:")')
          do iY_sub=1,nY_sub
             ! Global species index
-            ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
+            ispec=aen%inp_sub_ind(iY_sub)
             Y_sub(iY_sub)=Y_init(ispec)
             if (cfg%amRoot) then
                write(output_unit,'(a10,": "es12.5)') trim(spec_name(ispec)),Y_sub(iY_sub)
@@ -704,7 +700,7 @@ contains
          do iY=1,n_Y
             do iY_sub=1,nY_sub
                ! Global species index
-               ispec=aen%vectors(aen%ivec_spec_inds)%vector(iY_sub)
+               ispec=aen%inp_sub_ind(iY_sub)
                ! Local species index in the sub-array species
                if (trim(spec_name(ispec)).eq.trim(Y_name(iY))) then
                   iY_in_sub(iY)=iY_sub
@@ -761,25 +757,22 @@ contains
                   call fcmech_thermodata(T(i,j,k))
                   h_init=0.0_WP
                   do ispec=1, nspec
-                     h_init=h_init+hsp(ispec)* Y_init(ispec)
+                     h_init=h_init+hsp(ispec)*Y_init(ispec)
                   end do
                   
                   ! Map Y and h to the neural network scalars
-                  call aen%transform_inputs([h_init,Y_sub],hY)
-                  call aen%encode(hY,sc%SC(i,j,k,:))
+                  call aen%encode([h_init,Y_sub],sc%SC(i,j,k,:))
 
                   ! Get transport properties
-                  call trn%get_transport(sc%SC(i,j,k,:),trnprop_tmp)
-                  call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
+                  call trn%forward_pass(sc%SC(i,j,k,:),trnprop)
                   sc%rho(i,j,k)   =exp(trnprop(2))
                   fs%visc(i,j,k)  =trnprop(3)
                   sc%diff(i,j,k,:)=trnprop(4)*sc%rho(i,j,k)
 
                   ! Map the neural network scalars to Y (for visualization purposes at t=0)
-                  call aen%decode(sc%SC(i,j,k,:),TYS)
-                  call aen%inverse_transform_outputs(TYS,hY,nY_sub+1)
+                  call aen%forward_pass(sc%SC(i,j,k,:),TYS)
                   do iY=1,n_Y
-                     Y(i,j,k,iY)=hY(iY_in_sub(iY)+1)
+                     Y(i,j,k,iY)=TYS(iY_in_sub(iY)+1)
                   end do
 
                end do
@@ -801,7 +794,6 @@ contains
          ! Release unused memory
          deallocate(SC_init)
          deallocate(Y_init)
-
       end block initialize_scalar
 
 
@@ -860,7 +852,6 @@ contains
          call cfg%maximum(T,Tmax)
       end block initialize_stats
 
-
       ! Add Ensight output
       create_ensight: block
          ! Create Ensight output from cfg
@@ -869,13 +860,13 @@ contains
          ens_evt=event(time=time,name='Ensight output')
          call param_read('Ensight output period',ens_evt%tper)
          ! Add variables to output
-         call ens_out%add_scalar('pressure'   ,fs%P)
-         call ens_out%add_vector('velocity'   ,Ui,Vi,Wi)
-         call ens_out%add_scalar('divergence' ,fs%div)
-         call ens_out%add_scalar('density'    ,sc%rho)
-         call ens_out%add_scalar('viscosity'  ,fs%visc)
+         call ens_out%add_scalar('pressure'  ,fs%P)
+         call ens_out%add_vector('velocity'  ,Ui,Vi,Wi)
+         call ens_out%add_scalar('divergence',fs%div)
+         call ens_out%add_scalar('density'   ,sc%rho)
+         call ens_out%add_scalar('viscosity' ,fs%visc)
          call ens_out%add_scalar('T',T)
-         call ens_out%add_scalar('thermal_diff',sc%diff(:, :, :, 1))
+         call ens_out%add_scalar('thermal_diff',sc%diff(:,:,:,1))
          do iY=1,n_Y
             call ens_out%add_scalar('Y_'//Y_name(iY),Y(:,:,:,iY))
          end do
@@ -927,7 +918,6 @@ contains
          call statfile%write()
       end block create_monitor
 
-
    end subroutine simulation_init
 
 
@@ -955,11 +945,11 @@ contains
          fs%Vold=fs%V; fs%rhoVold=fs%rhoV
          fs%Wold=fs%W; fs%rhoWold=fs%rhoW
 
-         ! Get the RHS from chsourcenet
+         ! Get the source terms
          do k=sc%cfg%kmino_,sc%cfg%kmaxo_
             do j=sc%cfg%jmino_,sc%cfg%jmaxo_
                do i=sc%cfg%imino_,sc%cfg%imaxo_
-                  call csn%get_src(sc%SC(i,j,k,:),SC_src(i,j,k,:))
+                  call csn%forward_pass(sc%SC(i,j,k,:),SC_src(i,j,k,:))
                end do
             end do
          end do
@@ -1024,8 +1014,7 @@ contains
             do k=sc%cfg%kmino_,sc%cfg%kmaxo_
                do j=sc%cfg%jmino_,sc%cfg%jmaxo_
                   do i=sc%cfg%imino_,sc%cfg%imaxo_
-                     call trn%get_transport(sc%SC(i,j,k,:),trnprop_tmp)
-                     call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
+                     call trn%forward_pass(sc%SC(i,j,k,:),trnprop)
                      sc%rho(i,j,k)   =exp(trnprop(2))
                      fs%visc(i,j,k)  =trnprop(3)
                      sc%diff(i,j,k,:)=trnprop(4)*sc%rho(i,j,k)
@@ -1111,11 +1100,10 @@ contains
             do k=sc%cfg%kmino_,sc%cfg%kmaxo_
                do j=sc%cfg%jmino_,sc%cfg%jmaxo_
                   do i=sc%cfg%imino_,sc%cfg%imaxo_
-                     call aen%decode(sc%SC(i,j,k,:),TYS)
-                     call aen%inverse_transform_outputs(TYS,hY,nY_sub+1)
-                     T(i,j,k)=hY(1)
+                     call aen%forward_pass(sc%SC(i,j,k,:),TYS)
+                     T(i,j,k)=TYS(1)
                      do iY=1,n_Y
-                        Y(i,j,k,iY)=hY(iY_in_sub(iY)+1)
+                        Y(i,j,k,iY)=TYS(iY_in_sub(iY)+1)
                      end do
                   end do
                end do
@@ -1164,7 +1152,7 @@ contains
       ! timetracker
 
       ! Deallocate work arrays
-      deallocate(spec_name,Y_sub,hY,TYS,iY_in_sub,Y_name)
+      deallocate(spec_name,Y_sub,TYS,iY_in_sub,Y_name)
       deallocate(resU,resV,resW,resRHO,Ui,Vi,Wi,T)
       deallocate(resSC,SCtmp,SC_src,bqflag,Y)
 
