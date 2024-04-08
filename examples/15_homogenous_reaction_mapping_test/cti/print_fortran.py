@@ -16,9 +16,9 @@ import numpy as np
 # mech = mechanisms.Mechanism("YAO_reduced.cti")
 mech = mechanisms.Mechanism("reducedS152R621_0.cti")
 
-custom.print_fortran(mech, "ATJ", routine_name="fcmech", use="NGA")
+custom.print_fortran(mech, "ATJ_revfit_press", routine_name="fcmech", use="NGA")
 
-os.system("cp YAO.f90 ../src/YAO.f90")
+# os.system("cp YAO.f90 ../src/YAO.f90")
 
 # fuel = {"NXC12H26":1.0}
 # oxidizer = {"O2":1.0, "N2":3.76}

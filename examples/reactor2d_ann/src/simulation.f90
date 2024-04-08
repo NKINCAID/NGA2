@@ -37,7 +37,7 @@ module simulation
    type(event)   :: ens_evt
 
    !> Simulation monitor file
-   type(monitor) :: mfile,cflfile
+   type(monitor) :: mfile,cflfile,statfile
 
    !> Private work arrays
    real(WP), dimension(:,:,:,:), allocatable :: resSC,SCtmp,SC_src    !< Scalar solver arrays
@@ -46,6 +46,7 @@ module simulation
    real(WP), dimension(:,:,:),   allocatable :: Ui,Vi,Wi              !< Cell-centred velocity components
    real(WP), dimension(:,:,:),   allocatable :: SC_init,U_init,V_init !< Initial condition for scalar and velocity fields
    real(WP), dimension(:,:,:),   allocatable :: T                     !< Temperature
+   real(WP), dimension(:,:,:),   allocatable :: tmpfield              !< Temporary field for statistics
    real(WP), dimension(:),       allocatable :: Y_sub                 !< Mass fraction of species that are used by networks
    real(WP), dimension(:),       allocatable :: Y_init                !< Initial mass fractions
    real(WP), dimension(:),       allocatable :: hY                    !< Enthalpy and mass fractions of sub species
@@ -60,6 +61,9 @@ module simulation
 
    !> Scalar and species indices
    integer :: isc,iY
+
+   !> Statistics
+   real(WP) :: rhomean,Tmean,Trms,Tmax
 
    !> Simulation sub-routines
    public :: simulation_init,simulation_run,simulation_final
@@ -548,8 +552,8 @@ contains
          call fs%add_bcond(name='xm_outflow',type=neumann,face='x',dir=-1,canCorrect=.True.,locator=xm_locator)
          call fs%add_bcond(name='xp_outflow',type=neumann,face='x',dir=+1,canCorrect=.True.,locator=xp_locator)
          ! Configure pressure solver
-         ps=hypre_str(cfg=cfg,name='Pressure',method=smg,nst=7)
-         ps%maxlevel=18
+         ps = hypre_str(cfg=cfg, name='Pressure', method=smg, nst=7)
+         ps%maxlevel = 12
          call param_read('Pressure iteration',ps%maxit)
          call param_read('Pressure tolerance',ps%rcvg)
          ! Setup the flow solver
@@ -609,10 +613,11 @@ contains
          allocate(SCtmp (sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,sc%nscalar))
          allocate(bqflag(cfg%imino_:cfg%imaxo_,cfg%jmino_:cfg%jmaxo_,cfg%kmino_:cfg%kmaxo_,sc%nscalar))
          allocate(SC_src(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,aen%nvar)); SC_src=0.0_WP
-         ! Temporary arrays for initial conditions
-         allocate(SC_init(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
-         allocate(U_init (fs%cfg%imin:fs%cfg%imax,fs%cfg%jmin:fs%cfg%jmax,fs%cfg%kmin:fs%cfg%kmax))
-         allocate(V_init (fs%cfg%imin:fs%cfg%imax,fs%cfg%jmin:fs%cfg%jmax,fs%cfg%kmin:fs%cfg%kmax))
+         ! Temporary arrays
+         allocate(SC_init (sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax))
+         allocate(U_init  (fs%cfg%imin:fs%cfg%imax,fs%cfg%jmin:fs%cfg%jmax,fs%cfg%kmin:fs%cfg%kmax))
+         allocate(V_init  (fs%cfg%imin:fs%cfg%imax,fs%cfg%jmin:fs%cfg%jmax,fs%cfg%kmin:fs%cfg%kmax))
+         allocate(tmpfield(sc%cfg%imin:sc%cfg%imax,sc%cfg%jmin:sc%cfg%jmax,sc%cfg%kmin:sc%cfg%kmax)); tmpfield=0.0_WP
          ! Combustion
          allocate(T(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_))
          allocate(Y(sc%cfg%imino_:sc%cfg%imaxo_,sc%cfg%jmino_:sc%cfg%jmaxo_,sc%cfg%kmino_:sc%cfg%kmaxo_,n_Y))
@@ -763,7 +768,7 @@ contains
                   call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
                   sc%rho(i,j,k)   =exp(trnprop(2))
                   fs%visc(i,j,k)  =trnprop(3)
-                  sc%diff(i,j,k,:)=trnprop(4)
+                  sc%diff(i,j,k,:)=trnprop(4) * sc%rho(i,j,k)
 
                   ! Map the neural network scalars to Y (for visualization purposes at t=0)
                   call aen%decode(sc%SC(i,j,k,:),TYS)
@@ -835,6 +840,24 @@ contains
       end block initialize_velocity
 
 
+      ! Initialize turbulence statistics
+      initialize_stats: block
+         ! Mean density
+         call cfg%integrate(sc%rho,rhomean)
+         rhomean=rhomean/cfg%vol_total
+         ! Favre-averaged temperature
+         tmpfield=sc%rho*T
+         call cfg%integrate(tmpfield,Tmean)
+         Tmean=Tmean/(rhomean*cfg%vol_total)
+         ! Favre-averaged temperature fluctuations
+         tmpfield=sc%rho*(T-Tmean)**2
+         call cfg%integrate(tmpfield,Trms)
+         Trms=sqrt(Trms/(rhomean*cfg%vol_total))
+         ! Maximum temperature
+         call cfg%maximum(T,Tmax)
+      end block initialize_stats
+
+
       ! Add Ensight output
       create_ensight: block
          ! Create Ensight output from cfg
@@ -848,7 +871,8 @@ contains
          call ens_out%add_scalar('divergence' ,fs%div)
          call ens_out%add_scalar('density'    ,sc%rho)
          call ens_out%add_scalar('viscosity'  ,fs%visc)
-         call ens_out%add_scalar('temperature',T)
+         call ens_out%add_scalar('T',T)
+         call ens_out%add_scalar('thermal_diff',sc%diff(:, :, :, 1))
          do iY=1,n_Y
             call ens_out%add_scalar('Y_'//Y_name(iY),Y(:,:,:,iY))
          end do
@@ -891,6 +915,13 @@ contains
          call cflfile%add_column(fs%CFLv_y,'Viscous yCFL')
          call cflfile%add_column(fs%CFLv_z,'Viscous zCFL')
          call cflfile%write()
+         ! Creat statistics monitor
+         statfile=monitor(fs%cfg%amRoot,'stats')
+         call statfile%add_column(time%t,'Time')
+         call statfile%add_column(Tmean,'Tmean')
+         call statfile%add_column(Trms,'Trms')
+         call statfile%add_column(Tmax,'Tmax')
+         call statfile%write()
       end block create_monitor
 
 
@@ -994,7 +1025,7 @@ contains
                      call trn%inverse_transform_outputs(trnprop_tmp,trnprop)
                      sc%rho(i,j,k)   =exp(trnprop(2))
                      fs%visc(i,j,k)  =trnprop(3)
-                     sc%diff(i,j,k,:)=trnprop(4)
+                     sc%diff(i,j,k,:)=trnprop(4) * sc%rho(i,j,k) 
                   end do
                end do
             end do
@@ -1068,10 +1099,10 @@ contains
 
          ! Recompute interpolated velocity and divergence
          call fs%interp_vel(Ui,Vi,Wi)
-         call sc%get_drhodt(dt=time%dt, drhodt=resRHO)
+         call sc%get_drhodt(dt=time%dt,drhodt=resRHO)
          call fs%get_div(drhodt=resRHO)
 
-         ! Output to ensight
+         ! Post process
          if (ens_evt%occurs()) then
             ! Map the neural network scalars to T and Y
             do k=sc%cfg%kmino_,sc%cfg%kmaxo_
@@ -1086,8 +1117,23 @@ contains
                   end do
                end do
             end do
-            ! Write
+            ! Mean density
+            call cfg%integrate(sc%rho,rhomean)
+            rhomean=rhomean/cfg%vol_total
+            ! Favre-averaged temperature
+            tmpfield=sc%rho*T
+            call cfg%integrate(tmpfield,Tmean)
+            Tmean=Tmean/(rhomean*cfg%vol_total)
+            ! Favre-averaged temperature fluctuations
+            tmpfield=sc%rho*(T-Tmean)**2
+            call cfg%integrate(tmpfield,Trms)
+            Trms=sqrt(Trms/(rhomean*cfg%vol_total))
+            ! Maximum temperature
+            call cfg%maximum(T,Tmax)
+            ! Output to ensight
             call ens_out%write_data(time%t)
+            ! Output monitoring
+            call statfile%write()
          end if
 
          ! Perform and output monitoring

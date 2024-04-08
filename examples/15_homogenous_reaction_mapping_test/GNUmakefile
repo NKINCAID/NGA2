@@ -38,6 +38,8 @@ ifdef Ulocs
 endif
 $(info Taking base code from: $(Bdirs))
 
+F90FLAGS += -fallow-argument-mismatch
+
 # Target definition
 all: $(executable)
 	@echo COMPILATION SUCCESSFUL

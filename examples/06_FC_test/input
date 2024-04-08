@@ -23,10 +23,10 @@ Temperature range       : 400
 Temperature lower bound : 650
 Buffer temperature      : 650
 
-Initial HMN           :    1.0810837e-02
-Initial XC12H26       :    5.2061660e-02
-Initial N2            :    7.1877706e-01
-Initial O2            :    2.1835044e-01
+!Initial HMN           :    1.0810837e-02
+!Initial XC12H26       :    5.2061660e-02
+!Initial N2            :    7.1877706e-01
+!Initial O2            :    2.1835044e-01
 
 
 !Initial N2            :    7.1879940e-01

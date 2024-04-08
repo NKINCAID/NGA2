@@ -1,0 +1,101 @@
+# Parallelization
+Partition : 1 1 1
+
+# Mesh definition
+Lx : 3e-4
+Ly : 3e-5
+Lz : 3e-5
+nx : 256
+ny : 1
+nz : 1
+
+
+# Inflow definition
+ks/ko : 3
+kc/ks : 2
+Buffer region length : 0.0
+
+Forcing constant     : 1.0
+Velocity fluctuation : 0.1
+Energetic scale      : 0.003
+Dissipative scale    : 0.0001
+Dissipation          : 1e-3
+Pressure = 3.4e6
+
+# Time integration
+Max timestep size :	1e-6
+Max cfl number    :	0.2
+Max time          : 5e-4
+Max iterations    : 100000
+Inner iterations  : 3
+
+Time stepping : implicit
+
+# Pressure solver
+Pressure tolerance : 1e-10
+Pressure iteration : 100
+
+# Ensight output
+Ensight output period : 1e-6
+Ensight output species : XC12H26, HMN, OH, O2, CO, CO2
+
+# Neural network data files
+Auto encoder         : auto_encoder
+Chemical source      : chem_sources
+Transport properties : fluid_trnspt
+
+
+# U velocity : 0.143032
+U velocity : 0.577423
+
+Use reactions : .true.
+
+Flame location : 0.000110859375
+
+Tu : 700
+Tb : 2580.850374916288
+
+Inflow HMN           :    1.0811045e-02
+Inflow XC12H26       :    5.2062608e-02
+Inflow N2            :    7.1876869e-01
+Inflow H2            :    6.8511264e-06
+Inflow O2            :    2.1834947e-01
+Inflow H2O           :    1.1747221e-06
+Inflow H2O2          :    1.5805168e-09
+Inflow HO2           :    1.3276329e-09
+Inflow CO            :    1.1599470e-07
+Inflow CO2           :    1.2086073e-08
+Inflow CH4           :    1.1540357e-08
+Inflow CH3OH         :    2.3461093e-10
+Inflow CH2O          :    2.4879719e-09
+Inflow C2H6          :    3.4552329e-10
+Inflow C2H4          :    7.2642654e-09
+Inflow C2H2          :    1.8112076e-09
+Inflow C3H6          :    8.1113232e-10
+Inflow C12H24O3GL1G    :    1.8923848e-10
+Inflow C12H24OGL1G    :    1.2829595e-10
+
+Burnt XC12H23-42    :    7.3662334e-05
+Burnt N2            :    7.1877177e-01
+Burnt H2            :    1.6334107e-04
+Burnt H             :    1.0818296e-05
+Burnt O2            :    8.8607827e-03
+Burnt O             :    1.8975532e-04
+Burnt H2O           :    8.2986951e-02
+Burnt OH            :    2.5823925e-03
+Burnt H2O2          :    7.0280530e-07
+Burnt HO2           :    4.9322087e-06
+Burnt CO            :    1.2506525e-02
+Burnt CO2           :    1.7322034e-01
+Burnt CH3           :    1.2695533e-10
+Burnt CH2O          :    6.2670400e-10
+Burnt HCO           :    1.8300224e-08
+Burnt C2H2          :    8.8489660e-10
+Burnt CH2CO         :    1.0148082e-10
+Burnt C3H5-A        :    6.7480342e-10
+Burnt C3H3          :    2.0421364e-10
+Burnt I24C7D1       :    6.2116489e-04
+Burnt NEC7Y4        :    6.2632969e-06
+Burnt C8H16OGL1G    :    4.8262221e-10
+Burnt C16H32OGL1G    :    1.8174050e-09
+Burnt C12H25OGL1G    :    5.8408506e-07

@@ -481,6 +481,8 @@ contains
          end do
          print*,''
 
+         call param_read('Initial temperature', T_init)
+
          call param_read('Pressure', fc%Pthermo)
 
          call param_read('Buffer region length',L_buffer)
@@ -498,7 +500,9 @@ contains
          tmp_sc_max = maxval(SC_init)
          
 
-         fc%SC(:,:,:, nspec+1) = 1000.0_WP
+         fc%SC(:,:,:, nspec+1) = T_init
+
+         print *, T_init
 
 
          call fc%get_density()
@@ -629,9 +633,19 @@ contains
 
    !> Perform an NGA2 simulation
    subroutine simulation_run
+      use messager, only: die
+
       implicit none
-      integer :: i,j,k
       real(WP), dimension(nspec) :: wdot_test
+      real(WP), dimension(nspec) :: y, c, wdot, cdot
+      real(WP), dimension(nspec+1) :: rhs
+      real(WP), dimension(nqss) :: cqss
+      real(WP), dimension(nreac + nreac_reverse) :: w,k
+      real(WP), dimension(nTB + nFO) :: M
+
+      real(WP) :: P, T, rho, inv_W_g
+
+      integer :: n, i
 
       ! Perform time integration
       do while (.not. time%done())

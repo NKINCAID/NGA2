@@ -39,7 +39,7 @@ Pressure = 3.4e6
 Time stepping     : explicit
 Max timestep size :	1e-5
 Max cfl number    :	0.8
-Max time          : 1e-2
+Max time          : 8e-3
 Max iterations    : 1000
 Sub-iterations    : 5
 
@@ -51,3 +51,7 @@ Pressure iteration : 100
 Ensight output period : 1e-5
 
 Instance number : 42
+
+
+Initial temperature    :    850.0
+

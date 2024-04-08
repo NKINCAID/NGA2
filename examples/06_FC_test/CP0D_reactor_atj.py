@@ -87,7 +87,7 @@ ax.grid()
 
 ax.legend(frameon=False, loc="lower right")
 
-plt.title(r"Constant Volume Reactor")
+plt.title(r"Constant Pressure Reactor")
 
 plt.tight_layout()
 plt.savefig("temperature.png")
